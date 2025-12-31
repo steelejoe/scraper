@@ -1,0 +1,27 @@
+{
+  "name": "scraper",
+  "version": "1.0.0",
+  "description": "Plugin-based web scraper for chapter-based content",
+  "main": "src/cli/index.js",
+  "type": "module",
+  "bin": {
+    "scraper": "./src/cli/index.js"
+  },
+  "scripts": {
+    "start": "node src/cli/index.js"
+  },
+  "keywords": [
+    "scraper",
+    "web-scraping",
+    "puppeteer"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "fs-extra": "^11.2.0",
+    "puppeteer": "^21.6.1"
+  }
+}
+
+
