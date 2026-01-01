@@ -19,10 +19,11 @@ program
   .command('scrape')
   .description('Scrape a specific book (forward)')
   .argument('<book-id>', 'The ID of the book to scrape')
-  .action(async (bookId) => {
+  .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
+  .action(async (bookId, options) => {
     try {
       const engine = new ScraperEngine();
-      await engine.scrapeBook(bookId);
+      await engine.scrapeBook(bookId, options.forceSave || false);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
@@ -35,7 +36,8 @@ program
   .description('Scrape a book in reverse (from initial chapter backwards). If chapter number is not provided, it will be extracted from the initial page.')
   .argument('<book-id>', 'The ID of the book to scrape')
   .argument('[chapter-number]', 'Optional: The chapter number of the initial chapter. If not provided, will be extracted from the initial page.')
-  .action(async (bookId, chapterNumber) => {
+  .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
+  .action(async (bookId, chapterNumber, options) => {
     try {
       let initialChapterNum = null;
       if (chapterNumber) {
@@ -45,7 +47,7 @@ program
         }
       }
       const engine = new ScraperEngine();
-      await engine.scrapeBookReverse(bookId, initialChapterNum);
+      await engine.scrapeBookReverse(bookId, initialChapterNum, options.forceSave || false);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
@@ -81,21 +83,25 @@ program
   .command('add-book')
   .description('Add a new book')
   .argument('<id>', 'Unique identifier for the book')
-  .argument('<url>', 'URL of the first chapter (e.g., https://www.example.com/book/chapter-1)')
+  .argument('<root-path>', 'Base path for the book (e.g., /book-name/) - used to validate URLs')
+  .argument('<starting-url>', 'Full URL of the starting chapter (e.g., https://www.example.com/book-name/chapter-1)')
   .option('-t, --title <title>', 'Optional: Book title')
-  .action(async (id, url, options) => {
+  .action(async (id, rootPath, startingUrl, options) => {
     try {
-      // Parse URL to extract domain and path
+      // Normalize root path (ensure it starts with /)
+      const normalizedRootPath = rootPath.startsWith('/') ? rootPath : `/${rootPath}`;
+
+      // Parse starting URL to extract domain and path
       let parsedUrl;
       try {
-        parsedUrl = new URL(url);
+        parsedUrl = new URL(startingUrl);
       } catch (error) {
-        throw new Error(`Invalid URL: ${url}. Please provide a complete URL including protocol (http:// or https://)`);
+        throw new Error(`Invalid URL: ${startingUrl}. Please provide a complete URL including protocol (http:// or https://)`);
       }
 
-      // Extract full domain (including subdomain) and path
+      // Extract full domain (including subdomain)
       const rootSite = parsedUrl.hostname; // e.g., "www.example.com"
-      const rootPath = parsedUrl.pathname + parsedUrl.search; // e.g., "/book/chapter-1" or "/book/chapter-1?page=1"
+      const startingPath = parsedUrl.pathname + parsedUrl.search; // e.g., "/book-name/chapter-1" or "/book-name/chapter-1?page=1"
       
       // Plugin is the same as the domain (1:1 relationship)
       const plugin = rootSite;
@@ -110,14 +116,15 @@ program
         console.log(`✓ Auto-created root site: ${rootSite}`);
       }
 
-      const book = new Book(id, rootSite, rootPath, plugin, null, [], options.title || null);
+      const book = new Book(id, rootSite, normalizedRootPath, plugin, null, [], options.title || null, startingPath);
       await dataManager.addBook(book);
       console.log(`✓ Added book: ${id}`);
       if (book.title) {
         console.log(`  Title: ${book.title}`);
       }
       console.log(`  Root site: ${rootSite}`);
-      console.log(`  Root path: ${rootPath}`);
+      console.log(`  Root path: ${normalizedRootPath}`);
+      console.log(`  Starting path: ${startingPath}`);
       console.log(`  Plugin: ${plugin}`);
     } catch (error) {
       console.error('Error:', error.message);
@@ -190,7 +197,8 @@ program
   .command('resume')
   .description('Resume scraping a book from the last scraped path')
   .argument('<book-id>', 'The ID of the book to resume scraping')
-  .action(async (bookId) => {
+  .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
+  .action(async (bookId, options) => {
     try {
       const book = await dataManager.getBook(bookId);
       if (!book) {
@@ -204,7 +212,7 @@ program
       }
 
       const engine = new ScraperEngine();
-      await engine.scrapeBook(bookId);
+      await engine.scrapeBook(bookId, options.forceSave || false);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);

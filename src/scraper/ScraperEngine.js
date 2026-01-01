@@ -16,7 +16,7 @@ export class ScraperEngine {
     fs.ensureDirSync(CONTENT_DIR);
   }
 
-  async scrapeBook(bookId) {
+  async scrapeBook(bookId, forceSave = false) {
     // Load book and root site data
     const book = await this.dataManager.getBook(bookId);
     if (!book) {
@@ -55,8 +55,9 @@ export class ScraperEngine {
         currentUrl = this.buildUrl(rootSite.domain, book.lastPathScraped);
         console.log(`Resuming from: ${currentUrl}`);
       } else {
-        // Start from root path
-        currentUrl = this.buildUrl(rootSite.domain, book.rootPath);
+        // Start from starting path (or root path for backward compatibility)
+        const startPath = book.startingPath || book.rootPath;
+        currentUrl = this.buildUrl(rootSite.domain, startPath);
         console.log(`Starting from: ${currentUrl}`);
       }
 
@@ -80,12 +81,23 @@ export class ScraperEngine {
             // we should try the next page instead of stopping
             const nextUrl = await plugin.getNextChapterUrl(page);
             if (nextUrl) {
-              const nextPath = this.extractPathFromUrl(nextUrl);
-              if (!book.hasChapter(nextPath)) {
-                console.log('Trying next chapter instead...');
-                currentUrl = nextUrl;
-                continue;
+              // Validate that URL contains root path
+              const urlValidation = this.validateUrlContainsRootPath(nextUrl, book.rootPath);
+              if (!urlValidation.valid) {
+                console.log(`Stopping scrape - next URL does not contain root path: ${urlValidation.reason}`);
+                break;
               }
+              
+              // Update lastPathScraped before moving to next chapter
+              const currentPath = this.extractPathFromUrl(currentUrl);
+              book.lastPathScraped = currentPath;
+              await this.dataManager.updateBook(bookId, {
+                lastPathScraped: book.lastPathScraped
+              });
+              
+              console.log('Trying next chapter instead...');
+              currentUrl = nextUrl;
+              continue;
             }
             console.log('Stopping scrape - no content and no valid next chapter');
             break;
@@ -106,57 +118,72 @@ export class ScraperEngine {
 
           // Format and save content
           const chapterPath = this.extractPathFromUrl(currentUrl);
-          // Get chapter number from scraped data, or try to extract from URL as fallback
-          let chapterNumber = chapterData.chapterNumber;
-          if (chapterNumber === undefined || chapterNumber === null) {
-            // Try to extract from URL as fallback (supports both integers and decimals)
-            const chapterMatch = currentUrl.match(/chapter[_-]?(\d+\.?\d*)/i);
-            if (chapterMatch) {
-              chapterNumber = parseFloat(chapterMatch[1]);
-            } else {
-              // Use sequential numbering as last resort
-              chapterNumber = book.chapters.length + 1;
+          
+          // Check if chapter was already scraped
+          const alreadyScraped = book.hasChapter(chapterPath);
+          
+          // Save chapter if not already scraped, or if forceSave is enabled
+          if (!alreadyScraped || forceSave) {
+            // Get chapter number from scraped data, or try to extract from URL as fallback
+            let chapterNumber = chapterData.chapterNumber;
+            if (chapterNumber === undefined || chapterNumber === null) {
+              // Try to extract from URL as fallback (supports both integers and decimals)
+              const chapterMatch = currentUrl.match(/chapter[_-]?(\d+\.?\d*)/i);
+              if (chapterMatch) {
+                chapterNumber = parseFloat(chapterMatch[1]);
+              } else {
+                // Use sequential numbering as last resort
+                chapterNumber = book.chapters.length + 1;
+              }
             }
-          }
-          
-          // Add chapter with number to book
-          book.addChapter(chapterPath, chapterNumber);
-          
-          // Get sorted chapters to find previous/next
-          const sortedChapters = book.getChaptersSorted();
-          const currentIndex = sortedChapters.findIndex(ch => {
-            const chPath = book.getChapterPath(ch);
-            return chPath === chapterPath;
-          });
-          
-          const prevChapter = currentIndex > 0 ? sortedChapters[currentIndex - 1] : null;
-          const nextChapter = currentIndex >= 0 && currentIndex < sortedChapters.length - 1 ? sortedChapters[currentIndex + 1] : null;
-          
-          const prevChapterPath = prevChapter ? book.getChapterPath(prevChapter) : null;
-          const nextChapterPath = nextChapter ? book.getChapterPath(nextChapter) : null;
-          
-          // Save current chapter with navigation
-          await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath);
-          
-          // Update previous chapter's "next" link if it exists
-          if (prevChapterPath) {
-            await this.updateChapterNavigation(bookId, prevChapterPath, chapterPath);
-          }
-          
-          // Update next chapter's "previous" link if it exists (in case we're inserting in the middle)
-          if (nextChapterPath) {
-            await this.updateChapterNavigation(bookId, nextChapterPath, chapterPath, true);
+            
+            // Add chapter with number to book (only if not already added)
+            if (!alreadyScraped) {
+              book.addChapter(chapterPath, chapterNumber);
+            }
+            
+            // Get sorted chapters to find previous/next
+            const sortedChapters = book.getChaptersSorted();
+            const currentIndex = sortedChapters.findIndex(ch => {
+              const chPath = book.getChapterPath(ch);
+              return chPath === chapterPath;
+            });
+            
+            const prevChapter = currentIndex > 0 ? sortedChapters[currentIndex - 1] : null;
+            const nextChapter = currentIndex >= 0 && currentIndex < sortedChapters.length - 1 ? sortedChapters[currentIndex + 1] : null;
+            
+            const prevChapterPath = prevChapter ? book.getChapterPath(prevChapter) : null;
+            const nextChapterPath = nextChapter ? book.getChapterPath(nextChapter) : null;
+            
+            // Save current chapter with navigation
+            await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath, currentUrl);
+            
+            // Update previous chapter's "next" link if it exists
+            if (prevChapterPath) {
+              await this.updateChapterNavigation(bookId, prevChapterPath, chapterPath);
+            }
+            
+            // Update next chapter's "previous" link if it exists (in case we're inserting in the middle)
+            if (nextChapterPath) {
+              await this.updateChapterNavigation(bookId, nextChapterPath, chapterPath, true);
+            }
+
+            chapterCount++;
+            if (alreadyScraped && forceSave) {
+              console.log(`✓ Force saved chapter (overwrote existing): ${chapterData.title}`);
+            } else {
+              console.log(`✓ Saved chapter: ${chapterData.title}`);
+            }
+          } else {
+            console.log(`⊘ Chapter already scraped, skipping: ${chapterData.title}`);
           }
 
-          // Update book metadata
+          // Update book metadata (always update lastPathScraped, even if chapter was already scraped)
           book.lastPathScraped = chapterPath;
           await this.dataManager.updateBook(bookId, {
             chapters: book.chapters,
             lastPathScraped: book.lastPathScraped
           });
-
-          chapterCount++;
-          console.log(`✓ Saved chapter: ${chapterData.title}`);
 
           // Get next chapter URL
           const nextUrl = await plugin.getNextChapterUrl(page);
@@ -166,13 +193,14 @@ export class ScraperEngine {
             break;
           }
 
-          // Check if next chapter was already scraped
-          const nextPath = this.extractPathFromUrl(nextUrl);
-          if (book.hasChapter(nextPath)) {
-            console.log('Next chapter already scraped, stopping');
+          // Validate that URL contains root path
+          const urlValidation = this.validateUrlContainsRootPath(nextUrl, book.rootPath);
+          if (!urlValidation.valid) {
+            console.log(`Stopping scrape - next URL does not contain root path: ${urlValidation.reason}`);
             break;
           }
 
+          // Continue to next chapter even if it's already scraped
           currentUrl = nextUrl;
 
         } catch (error) {
@@ -182,6 +210,14 @@ export class ScraperEngine {
           if (!nextUrl) {
             throw error; // Re-throw if we can't continue
           }
+          
+          // Validate that URL contains root path
+          const urlValidation = this.validateUrlContainsRootPath(nextUrl, book.rootPath);
+          if (!urlValidation.valid) {
+            console.log(`Stopping scrape - next URL does not contain root path: ${urlValidation.reason}`);
+            throw error; // Re-throw the original error
+          }
+          
           currentUrl = nextUrl;
         }
       }
@@ -193,7 +229,7 @@ export class ScraperEngine {
     }
   }
 
-  async scrapeBookReverse(bookId, initialChapterNumber = null) {
+  async scrapeBookReverse(bookId, initialChapterNumber = null, forceSave = false) {
     // Load book and root site data
     const book = await this.dataManager.getBook(bookId);
     if (!book) {
@@ -225,8 +261,9 @@ export class ScraperEngine {
         console.log('Login successful');
       }
 
-      // Start from root path (initial chapter)
-      let currentUrl = this.buildUrl(rootSite.domain, book.rootPath);
+      // Start from starting path (or root path for backward compatibility)
+      const startPath = book.startingPath || book.rootPath;
+      let currentUrl = this.buildUrl(rootSite.domain, startPath);
       
       // If chapter number not provided, scrape the initial page to get it
       let chapterNumber = initialChapterNumber;
@@ -279,12 +316,23 @@ export class ScraperEngine {
             // we should try the previous page instead of stopping
             const prevUrl = await plugin.getPreviousChapterUrl(page);
             if (prevUrl) {
-              const prevPath = this.extractPathFromUrl(prevUrl);
-              if (!book.hasChapter(prevPath)) {
-                console.log('Trying previous chapter instead...');
-                currentUrl = prevUrl;
-                continue;
+              // Validate that URL contains root path
+              const urlValidation = this.validateUrlContainsRootPath(prevUrl, book.rootPath);
+              if (!urlValidation.valid) {
+                console.log(`Stopping scrape - previous URL does not contain root path: ${urlValidation.reason}`);
+                break;
               }
+              
+              // Update lastPathScraped before moving to previous chapter
+              const currentPath = this.extractPathFromUrl(currentUrl);
+              book.lastPathScraped = currentPath;
+              await this.dataManager.updateBook(bookId, {
+                lastPathScraped: book.lastPathScraped
+              });
+              
+              console.log('Trying previous chapter instead...');
+              currentUrl = prevUrl;
+              continue;
             }
             console.log('Stopping scrape - no content and no valid previous chapter');
             break;
@@ -313,44 +361,58 @@ export class ScraperEngine {
           // Format and save content
           const chapterPath = this.extractPathFromUrl(currentUrl);
           
-          // Add chapter with number to book
-          book.addChapter(chapterPath, currentChapterNumber);
+          // Check if chapter was already scraped
+          const alreadyScraped = book.hasChapter(chapterPath);
           
-          // Get sorted chapters to find previous/next
-          const sortedChapters = book.getChaptersSorted();
-          const currentIndex = sortedChapters.findIndex(ch => {
-            const chPath = book.getChapterPath(ch);
-            return chPath === chapterPath;
-          });
-          
-          const prevChapter = currentIndex > 0 ? sortedChapters[currentIndex - 1] : null;
-          const nextChapter = currentIndex >= 0 && currentIndex < sortedChapters.length - 1 ? sortedChapters[currentIndex + 1] : null;
-          
-          const prevChapterPath = prevChapter ? book.getChapterPath(prevChapter) : null;
-          const nextChapterPath = nextChapter ? book.getChapterPath(nextChapter) : null;
-          
-          // Save current chapter with navigation
-          await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath);
-          
-          // Update previous chapter's "next" link if it exists
-          if (prevChapterPath) {
-            await this.updateChapterNavigation(bookId, prevChapterPath, chapterPath);
-          }
-          
-          // Update next chapter's "previous" link if it exists
-          if (nextChapterPath) {
-            await this.updateChapterNavigation(bookId, nextChapterPath, chapterPath, true);
+          // Save chapter if not already scraped, or if forceSave is enabled
+          if (!alreadyScraped || forceSave) {
+            // Add chapter with number to book (only if not already added)
+            if (!alreadyScraped) {
+              book.addChapter(chapterPath, currentChapterNumber);
+            }
+            
+            // Get sorted chapters to find previous/next
+            const sortedChapters = book.getChaptersSorted();
+            const currentIndex = sortedChapters.findIndex(ch => {
+              const chPath = book.getChapterPath(ch);
+              return chPath === chapterPath;
+            });
+            
+            const prevChapter = currentIndex > 0 ? sortedChapters[currentIndex - 1] : null;
+            const nextChapter = currentIndex >= 0 && currentIndex < sortedChapters.length - 1 ? sortedChapters[currentIndex + 1] : null;
+            
+            const prevChapterPath = prevChapter ? book.getChapterPath(prevChapter) : null;
+            const nextChapterPath = nextChapter ? book.getChapterPath(nextChapter) : null;
+            
+            // Save current chapter with navigation
+            await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath, currentUrl);
+            
+            // Update previous chapter's "next" link if it exists
+            if (prevChapterPath) {
+              await this.updateChapterNavigation(bookId, prevChapterPath, chapterPath);
+            }
+            
+            // Update next chapter's "previous" link if it exists
+            if (nextChapterPath) {
+              await this.updateChapterNavigation(bookId, nextChapterPath, chapterPath, true);
+            }
+
+            chapterCount++;
+            if (alreadyScraped && forceSave) {
+              console.log(`✓ Force saved chapter (overwrote existing): ${currentChapterNumber} ${chapterData.title}`);
+            } else {
+              console.log(`✓ Saved chapter ${currentChapterNumber}: ${chapterData.title}`);
+            }
+          } else {
+            console.log(`⊘ Chapter already scraped, skipping: ${currentChapterNumber} ${chapterData.title}`);
           }
 
-          // Update book metadata
+          // Update book metadata (always update lastPathScraped, even if chapter was already scraped)
           book.lastPathScraped = chapterPath;
           await this.dataManager.updateBook(bookId, {
             chapters: book.chapters,
             lastPathScraped: book.lastPathScraped
           });
-
-          chapterCount++;
-          console.log(`✓ Saved chapter ${currentChapterNumber}: ${chapterData.title}`);
 
           // Get previous chapter URL
           const prevUrl = await plugin.getPreviousChapterUrl(page);
@@ -360,13 +422,14 @@ export class ScraperEngine {
             break;
           }
 
-          // Check if previous chapter was already scraped
-          const prevPath = this.extractPathFromUrl(prevUrl);
-          if (book.hasChapter(prevPath)) {
-            console.log('Previous chapter already scraped, stopping');
+          // Validate that URL contains root path
+          const urlValidation = this.validateUrlContainsRootPath(prevUrl, book.rootPath);
+          if (!urlValidation.valid) {
+            console.log(`Stopping scrape - previous URL does not contain root path: ${urlValidation.reason}`);
             break;
           }
 
+          // Continue to previous chapter even if it's already scraped
           currentUrl = prevUrl;
 
         } catch (error) {
@@ -376,6 +439,14 @@ export class ScraperEngine {
           if (!prevUrl) {
             throw error; // Re-throw if we can't continue
           }
+          
+          // Validate that URL contains root path
+          const urlValidation = this.validateUrlContainsRootPath(prevUrl, book.rootPath);
+          if (!urlValidation.valid) {
+            console.log(`Stopping scrape - previous URL does not contain root path: ${urlValidation.reason}`);
+            throw error; // Re-throw the original error
+          }
+          
           currentUrl = prevUrl;
         }
       }
@@ -402,6 +473,22 @@ export class ScraperEngine {
     }
   }
 
+  validateUrlContainsRootPath(url, rootPath) {
+    // Extract path from URL
+    const urlPath = this.extractPathFromUrl(url);
+    
+    // Check if URL path contains the root path
+    // This ensures the URL is still part of the same book
+    if (!urlPath.includes(rootPath)) {
+      return {
+        valid: false,
+        reason: `URL path does not contain root path "${rootPath}"`
+      };
+    }
+    
+    return { valid: true };
+  }
+
   async scrollPage(page) {
     let scrollCount = 0;
     let lastHeight = 0;
@@ -425,7 +512,7 @@ export class ScraperEngine {
     await page.waitForTimeout(500);
   }
 
-  async saveChapter(bookId, chapterPath, chapterData, contentType, prevChapterPath = null, nextChapterPath = null) {
+  async saveChapter(bookId, chapterPath, chapterData, contentType, prevChapterPath = null, nextChapterPath = null, url = null) {
     const bookContentDir = path.join(CONTENT_DIR, bookId);
     await fs.ensureDir(bookContentDir);
 
@@ -441,8 +528,14 @@ export class ScraperEngine {
     // Generate navigation links
     const navigation = this.generateNavigation(prevChapterPath, nextChapterPath);
 
+    // Format title: chapter number followed by chapter title
+    let titleLine = chapterData.title;
+    if (chapterData.chapterNumber !== undefined && chapterData.chapterNumber !== null) {
+      titleLine = `${chapterData.chapterNumber} ${chapterData.title}`;
+    }
+
     // Format markdown content
-    let markdown = `# ${chapterData.title}\n\n`;
+    let markdown = `# ${titleLine}\n\n`;
     
     // Add navigation at the top
     if (navigation) {
@@ -462,6 +555,11 @@ export class ScraperEngine {
     // Add navigation at the bottom as well
     if (navigation) {
       markdown += `\n\n---\n\n${navigation}`;
+    }
+
+    // Add URL at the very end
+    if (url) {
+      markdown += `\n\n${url}`;
     }
 
     await fs.writeFile(filePath, markdown, 'utf8');

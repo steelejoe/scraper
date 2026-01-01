@@ -1,11 +1,12 @@
 export class Book {
-  constructor(id, rootSite, rootPath, plugin, lastPathScraped = null, chapters = [], title = null) {
+  constructor(id, rootSite, rootPath, plugin, lastPathScraped = null, chapters = [], title = null, startingPath = null) {
     this.id = id;
     this.rootSite = rootSite;
     this.rootPath = rootPath;
     this.plugin = plugin;
     this.lastPathScraped = lastPathScraped;
     this.title = title;
+    this.startingPath = startingPath || rootPath; // Default to rootPath for backward compatibility
     // Chapters can be array of strings (legacy) or array of {path, number} objects
     this.chapters = Array.isArray(chapters) ? chapters : [];
   }
@@ -26,7 +27,8 @@ export class Book {
       json.plugin,
       json.lastPathScraped || null,
       chapters,
-      json.title || null
+      json.title || null,
+      json.startingPath || null
     );
   }
 
@@ -46,7 +48,8 @@ export class Book {
       plugin: this.plugin,
       lastPathScraped: this.lastPathScraped,
       chapters: chaptersJSON,
-      ...(this.title && { title: this.title })
+      ...(this.title && { title: this.title }),
+      ...(this.startingPath && { startingPath: this.startingPath })
     };
   }
 
@@ -71,6 +74,9 @@ export class Book {
     }
     if (this.title !== null && this.title !== undefined && typeof this.title !== 'string') {
       throw new Error('Book title must be a string or null');
+    }
+    if (this.startingPath !== null && this.startingPath !== undefined && typeof this.startingPath !== 'string') {
+      throw new Error('Book startingPath must be a string or null');
     }
     return true;
   }
