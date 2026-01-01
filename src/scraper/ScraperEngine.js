@@ -53,16 +53,19 @@ export class ScraperEngine {
       }
 
       // Determine starting URL
+      // Priority: 1. lastPathScraped, 2. startingPath, 3. Error if neither defined
       let currentUrl = null;
       if (book.lastPathScraped) {
         // Resume from last scraped path
         currentUrl = this.buildUrl(rootSite.domain, book.lastPathScraped);
         console.log(`Resuming from: ${currentUrl}`);
-      } else {
-        // Start from starting path (or root path for backward compatibility)
-        const startPath = book.startingPath || book.rootPath;
-        currentUrl = this.buildUrl(rootSite.domain, startPath);
+      } else if (book.startingPath) {
+        // Start from starting path
+        currentUrl = this.buildUrl(rootSite.domain, book.startingPath);
         console.log(`Starting from: ${currentUrl}`);
+      } else {
+        // Neither lastPathScraped nor startingPath is defined
+        throw new Error(`Cannot start scraping: both lastPathScraped and startingPath are undefined for book ${bookId}. Please set a startingPath when adding the book.`);
       }
 
       // Sequential scraping loop
@@ -89,6 +92,9 @@ export class ScraperEngine {
               // Validate that URL contains root path
               const urlValidation = this.validateUrlContainsRootPath(nextUrl, book.rootPath);
               if (!urlValidation.valid) {
+                const errorMsg = `Next chapter URL does not match root path: ${urlValidation.reason}`;
+                console.error(`Error: ${errorMsg}`);
+                this.errors.push({ url: nextUrl, type: 'url_validation_error', message: errorMsg });
                 console.log(`Stopping scrape - next URL does not contain root path: ${urlValidation.reason}`);
                 break;
               }
@@ -213,6 +219,9 @@ export class ScraperEngine {
           // Validate that URL contains root path
           const urlValidation = this.validateUrlContainsRootPath(nextUrl, book.rootPath);
           if (!urlValidation.valid) {
+            const errorMsg = `Next chapter URL does not match root path: ${urlValidation.reason}`;
+            console.error(`Error: ${errorMsg}`);
+            this.errors.push({ url: nextUrl, type: 'url_validation_error', message: errorMsg });
             console.log(`Stopping scrape - next URL does not contain root path: ${urlValidation.reason}`);
             break;
           }
@@ -234,6 +243,9 @@ export class ScraperEngine {
           // Validate that URL contains root path
           const urlValidation = this.validateUrlContainsRootPath(nextUrl, book.rootPath);
           if (!urlValidation.valid) {
+            const errorMsg = `Next chapter URL does not match root path: ${urlValidation.reason}`;
+            console.error(`Error: ${errorMsg}`);
+            this.errors.push({ url: nextUrl, type: 'url_validation_error', message: errorMsg });
             console.log(`Stopping scrape - next URL does not contain root path: ${urlValidation.reason}`);
             throw error; // Re-throw the original error
           }
@@ -287,8 +299,20 @@ export class ScraperEngine {
         console.log('Login successful');
       }
 
-      // Start from starting path (or root path for backward compatibility)
-      const startPath = book.startingPath || book.rootPath;
+      // Determine starting URL
+      // Priority: 1. lastPathScraped, 2. startingPath, 3. Error if neither defined
+      let startPath = null;
+      if (book.lastPathScraped) {
+        startPath = book.lastPathScraped;
+        console.log(`Resuming from last scraped path: ${startPath}`);
+      } else if (book.startingPath) {
+        startPath = book.startingPath;
+        console.log(`Starting from starting path: ${startPath}`);
+      } else {
+        // Neither lastPathScraped nor startingPath is defined
+        throw new Error(`Cannot start reverse scraping: both lastPathScraped and startingPath are undefined for book ${bookId}. Please set a startingPath when adding the book.`);
+      }
+      
       let currentUrl = this.buildUrl(rootSite.domain, startPath);
       
       // If chapter number not provided, scrape the initial page to get it
@@ -347,6 +371,9 @@ export class ScraperEngine {
               // Validate that URL contains root path
               const urlValidation = this.validateUrlContainsRootPath(prevUrl, book.rootPath);
               if (!urlValidation.valid) {
+                const errorMsg = `Previous chapter URL does not match root path: ${urlValidation.reason}`;
+                console.error(`Error: ${errorMsg}`);
+                this.errors.push({ url: prevUrl, type: 'url_validation_error', message: errorMsg });
                 console.log(`Stopping scrape - previous URL does not contain root path: ${urlValidation.reason}`);
                 break;
               }
@@ -493,6 +520,9 @@ export class ScraperEngine {
           // Validate that URL contains root path
           const urlValidation = this.validateUrlContainsRootPath(prevUrl, book.rootPath);
           if (!urlValidation.valid) {
+            const errorMsg = `Previous chapter URL does not match root path: ${urlValidation.reason}`;
+            console.error(`Error: ${errorMsg}`);
+            this.errors.push({ url: prevUrl, type: 'url_validation_error', message: errorMsg });
             console.log(`Stopping scrape - previous URL does not contain root path: ${urlValidation.reason}`);
             break;
           }
@@ -514,6 +544,9 @@ export class ScraperEngine {
           // Validate that URL contains root path
           const urlValidation = this.validateUrlContainsRootPath(prevUrl, book.rootPath);
           if (!urlValidation.valid) {
+            const errorMsg = `Previous chapter URL does not match root path: ${urlValidation.reason}`;
+            console.error(`Error: ${errorMsg}`);
+            this.errors.push({ url: prevUrl, type: 'url_validation_error', message: errorMsg });
             console.log(`Stopping scrape - previous URL does not contain root path: ${urlValidation.reason}`);
             throw error; // Re-throw the original error
           }
@@ -551,12 +584,30 @@ export class ScraperEngine {
     // Extract path from URL
     const urlPath = this.extractPathFromUrl(url);
     
+    // Normalize rootPath - if it's a full URL, extract just the pathname
+    let normalizedRootPath = rootPath;
+    try {
+      // Check if rootPath looks like a URL (starts with http:// or https://)
+      if (rootPath.startsWith('http://') || rootPath.startsWith('https://')) {
+        const rootPathUrl = new URL(rootPath);
+        normalizedRootPath = rootPathUrl.pathname;
+        // Remove trailing slash for comparison
+        normalizedRootPath = normalizedRootPath.replace(/\/$/, '');
+      }
+    } catch {
+      // If parsing fails, use rootPath as-is
+      normalizedRootPath = rootPath;
+    }
+    
+    // Normalize urlPath - remove trailing slash for comparison
+    const normalizedUrlPath = urlPath.replace(/\/$/, '');
+    
     // Check if URL path contains the root path
     // This ensures the URL is still part of the same book
-    if (!urlPath.includes(rootPath)) {
+    if (!normalizedUrlPath.includes(normalizedRootPath)) {
       return {
         valid: false,
-        reason: `URL path does not contain root path "${rootPath}"`
+        reason: `URL path does not contain root path "${rootPath}" (normalized: "${normalizedRootPath}")`
       };
     }
     
