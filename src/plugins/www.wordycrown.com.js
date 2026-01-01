@@ -209,10 +209,11 @@ export async function scrapeChapter(url, page, options = {}) {
         // If part is provided, append it; otherwise ensure we have at least 4 digits after decimal
         let chapterNumberStr;
         if (part !== null) {
-          // Format: volume.chapterPadded + part (e.g., 2.01371)
+          // Format: volume.chapterPadded + part (e.g., 2.00201 for volume 2, chapter 20, part 1)
+          // The part is appended directly to the chapter number
           chapterNumberStr = `${volume}.${chapterPadded}${part}`;
         } else {
-          // Format: volume.chapterPadded (e.g., 2.0027)
+          // Format: volume.chapterPadded (e.g., 2.0020)
           chapterNumberStr = `${volume}.${chapterPadded}`;
         }
         
@@ -222,9 +223,16 @@ export async function scrapeChapter(url, page, options = {}) {
         if (parts.length === 2) {
           const integerPart = parts[0];
           const decimalPart = parts[1];
-          // Ensure decimal part has at least 4 digits (right-pad with zeros if needed)
-          const normalizedDecimal = decimalPart.padEnd(4, '0');
-          chapterNumberStr = `${integerPart}.${normalizedDecimal}`;
+          // If we have a part number, don't truncate it - preserve the full decimal part
+          // Otherwise, ensure decimal part has at least 4 digits (right-pad with zeros if needed)
+          if (part !== null) {
+            // Keep the full decimal part as-is (includes the part number)
+            chapterNumberStr = `${integerPart}.${decimalPart}`;
+          } else {
+            // Ensure decimal part has at least 4 digits (right-pad with zeros if needed)
+            const normalizedDecimal = decimalPart.padEnd(4, '0');
+            chapterNumberStr = `${integerPart}.${normalizedDecimal}`;
+          }
         }
         
         return parseFloat(chapterNumberStr);
@@ -266,13 +274,34 @@ export async function scrapeChapter(url, page, options = {}) {
       };
       
       // Helper function to extract part number from text
+      // Handles variations like:
+      // - "Part 1", "part 1", "PART 1"
+      // - "pt 1", "Pt 1", "PT 1"
+      // - "Part: 1", "Part-1", "Part.1"
+      // - "(Part 1)", "(part 1)", etc.
       const extractPartNumber = (text) => {
         if (!text) return null;
-        // Look for "part 1", "Part 1", "part1", "Part1", etc. at the end of the text
-        const partMatch = text.match(/part\s*(\d+)\s*$/i);
-        if (partMatch) {
-          return parseInt(partMatch[1], 10);
+        
+        // Try multiple patterns to catch various formats
+        // Pattern 1: "part" or "pt" (case insensitive) followed by optional separator and number
+        // Separators can be: space, colon, dash, period, or parentheses
+        // Look for patterns like: "Part 1", "part:1", "pt-1", "(Part 1)", "Part.1", etc.
+        const patterns = [
+          // Pattern: (Part 1) or (part 1) - in parentheses
+          /\([^)]*(?:part|pt)[\s:.\-]*(\d+)[^)]*\)/i,
+          // Pattern: Part 1, part: 1, pt-1, etc. - with various separators
+          /(?:part|pt)[\s:.\-]+(\d+)/i,
+          // Pattern: Part1, part1, pt1 - no separator
+          /(?:part|pt)(\d+)/i
+        ];
+        
+        for (const pattern of patterns) {
+          const match = text.match(pattern);
+          if (match && match[1]) {
+            return parseInt(match[1], 10);
+          }
         }
+        
         return null;
       };
       
@@ -282,8 +311,15 @@ export async function scrapeChapter(url, page, options = {}) {
       const foundTitle = titleResult ? titleResult.cleaned : null;
       const rawTitleText = titleResult ? titleResult.raw : null;
       
-      // Extract part number from raw title
-      const partNumber = rawTitleText ? extractPartNumber(rawTitleText) : null;
+      // Extract part number from both raw and cleaned title (try both to catch all variations)
+      let partNumber = null;
+      if (rawTitleText) {
+        partNumber = extractPartNumber(rawTitleText);
+      }
+      // Also check cleaned title if not found in raw title
+      if (partNumber === null && foundTitle) {
+        partNumber = extractPartNumber(foundTitle);
+      }
       
       let foundChapterNumber = null;
       

@@ -191,6 +191,8 @@ export class ScraperEngine {
             await this.generateTOC(bookId);
           } else {
             console.log(`⊘ Chapter already scraped, skipping: ${chapterData.title}`);
+            // Still update TOC to ensure it's current (in case chapters were added/updated elsewhere)
+            await this.generateTOC(bookId);
           }
 
           // Update book metadata (always update lastPathScraped, even if chapter was already scraped)
@@ -469,6 +471,8 @@ export class ScraperEngine {
             await this.generateTOC(bookId);
           } else {
             console.log(`⊘ Chapter already scraped, skipping: ${currentChapterNumber} ${chapterData.title}`);
+            // Still update TOC to ensure it's current (in case chapters were added/updated elsewhere)
+            await this.generateTOC(bookId);
           }
 
           // Update book metadata (always update lastPathScraped, even if chapter was already scraped)
@@ -707,15 +711,33 @@ export class ScraperEngine {
         }
       }
 
-      // Extract volume from chapter number (e.g., 2.027 -> volume 2)
+      // Extract volume from chapter number (e.g., 2.0027 -> volume 2)
       let volume = 1; // Default to volume 1
       if (chapterNumber !== null) {
         const volumeMatch = chapterNumber.toString().match(/^(\d+)\./);
         if (volumeMatch) {
           volume = parseInt(volumeMatch[1], 10);
-        } else {
-          // If no decimal point, assume volume 1
-          volume = 1;
+        }
+      }
+      
+      // Format chapter number for display (ensure 4-digit padding)
+      // When parseFloat is used, trailing zeros are lost (e.g., 1.0010 becomes 1.001)
+      // We need to reconstruct the proper 4-digit format
+      let formattedChapterNumber = null;
+      if (chapterNumber !== null) {
+        const chapterNumStr = chapterNumber.toString();
+        if (chapterNumStr.includes('.')) {
+          const parts = chapterNumStr.split('.');
+          if (parts.length >= 2) {
+            const integerPart = parts[0];
+            let decimalPart = parts[1];
+            // Right-pad decimal part to 4 digits to restore trailing zeros
+            decimalPart = decimalPart.padEnd(4, '0');
+            formattedChapterNumber = parseFloat(`${integerPart}.${decimalPart}`);
+          }
+        }
+        if (formattedChapterNumber === null) {
+          formattedChapterNumber = chapterNumber;
         }
       }
 
@@ -724,7 +746,7 @@ export class ScraperEngine {
       }
 
       volumeMap.get(volume).push({
-        number: chapterNumber,
+        number: formattedChapterNumber !== null ? formattedChapterNumber : chapterNumber,
         title: title,
         filename: `${sanitizedPath}.md`
       });
@@ -746,8 +768,8 @@ export class ScraperEngine {
       
       for (const entry of chapters) {
         // Format chapter number: if it's a decimal like 2.0027, show just the chapter part (0027)
-        // Otherwise show the full number
         // With 4-digit padding, chapters are formatted as volume.XXXX (e.g., 2.0027 for chapter 27)
+        // Note: parseFloat removes trailing zeros, so we need to ensure 4-digit display
         let numberStr = '';
         if (entry.number !== null) {
           const chapterNumStr = entry.number.toString();
@@ -755,8 +777,10 @@ export class ScraperEngine {
             // Extract chapter part after the decimal point
             const parts = chapterNumStr.split('.');
             if (parts.length >= 2) {
-              // Show chapter number (e.g., "0027" from "2.0027")
-              numberStr = `${parts[1]} `;
+              // Right-pad to 4 digits to restore trailing zeros lost by parseFloat
+              // e.g., "001" -> "0010", "002" -> "0020", "0027" -> "0027"
+              let decimalPart = parts[1].padEnd(4, '0');
+              numberStr = `${decimalPart} `;
             } else {
               numberStr = `${entry.number} `;
             }
