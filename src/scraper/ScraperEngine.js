@@ -14,9 +14,13 @@ export class ScraperEngine {
     this.dataManager = new DataManager();
     this.pluginLoader = new PluginLoader();
     fs.ensureDirSync(CONTENT_DIR);
+    this.errors = []; // Accumulate errors during scraping
   }
 
   async scrapeBook(bookId, forceSave = false) {
+    // Reset errors for this scraping session
+    this.errors = [];
+    
     // Load book and root site data
     const book = await this.dataManager.getBook(bookId);
     if (!book) {
@@ -133,9 +137,15 @@ export class ScraperEngine {
               const chapterMatch = currentUrl.match(/chapter[_-]?(\d+\.?\d*)/i);
               if (chapterMatch) {
                 chapterNumber = parseFloat(chapterMatch[1]);
+                const errorMsg = `Could not determine chapter number for ${currentUrl}, extracted from URL: ${chapterNumber}`;
+                console.warn(`⚠ ${errorMsg}`);
+                this.errors.push({ url: currentUrl, type: 'chapter_number', message: errorMsg });
               } else {
                 // Use sequential numbering as last resort
                 chapterNumber = book.chapters.length + 1;
+                const errorMsg = `Could not determine chapter number for ${currentUrl}, using sequential fallback: ${chapterNumber}`;
+                console.warn(`⚠ ${errorMsg}`);
+                this.errors.push({ url: currentUrl, type: 'chapter_number', message: errorMsg });
               }
             }
             
@@ -206,7 +216,10 @@ export class ScraperEngine {
           currentUrl = nextUrl;
 
         } catch (error) {
-          console.error(`Error scraping ${currentUrl}:`, error.message);
+          const errorMsg = `Error scraping ${currentUrl}: ${error.message}`;
+          console.error(errorMsg);
+          this.errors.push({ url: currentUrl, type: 'scraping_error', message: errorMsg });
+          
           // Continue to next chapter if possible, or break on critical errors
           const nextUrl = await plugin.getNextChapterUrl(page).catch(() => null);
           if (!nextUrl) {
@@ -225,6 +238,9 @@ export class ScraperEngine {
       }
 
       console.log(`\nScraping complete. Scraped ${chapterCount} chapter(s).`);
+      
+      // Report accumulated errors
+      this.reportErrors();
 
     } finally {
       await browser.close();
@@ -232,6 +248,9 @@ export class ScraperEngine {
   }
 
   async scrapeBookReverse(bookId, initialChapterNumber = null, forceSave = false) {
+    // Reset errors for this scraping session
+    this.errors = [];
+    
     // Load book and root site data
     const book = await this.dataManager.getBook(bookId);
     if (!book) {
@@ -300,6 +319,7 @@ export class ScraperEngine {
 
       // Sequential reverse scraping loop
       let chapterCount = 0;
+      let lastChapterNumber = chapterNumber; // Track last chapter number for fallback calculation
       while (currentUrl) {
         try {
           console.log(`\nScraping: ${currentUrl}`);
@@ -356,10 +376,44 @@ export class ScraperEngine {
           }
 
           // Use chapter number from scraped data (should be extracted from URL by plugin)
-          const currentChapterNumber = chapterData.chapterNumber;
+          let currentChapterNumber = chapterData.chapterNumber;
           if (!currentChapterNumber) {
-            throw new Error(`Could not determine chapter number from URL: ${currentUrl}`);
+            const errorMsg = `Could not determine chapter number from URL: ${currentUrl}`;
+            console.warn(`⚠ ${errorMsg}`);
+            this.errors.push({ url: currentUrl, type: 'chapter_number', message: errorMsg });
+            
+            // Calculate fallback chapter number based on last scraped chapter
+            // If last chapter was 1.113, use 1.11299 (closest number that sorts before it)
+            // For subsequent fallback chapters, use the previous fallback as base: 1.11298, 1.11297, etc.
+            // This gives us a buffer of 99 fallback chapters (0.00001 to 0.00099)
+            if (lastChapterNumber !== null && lastChapterNumber !== undefined) {
+              // Calculate the fallback: subtract 0.00001 from the last chapter number
+              // This ensures fallback chapters sort before the last known chapter
+              // Each subsequent fallback will use the previous fallback as base
+              // This gives us a buffer of 99 fallback chapters (0.00001 to 0.00099)
+              currentChapterNumber = lastChapterNumber - 0.00001;
+              
+              // Format to ensure proper decimal precision (5 decimal places max)
+              currentChapterNumber = Math.round(currentChapterNumber * 100000) / 100000;
+              
+              console.warn(`⚠ Using fallback chapter number: ${currentChapterNumber} (based on last chapter ${lastChapterNumber})`);
+            } else {
+              // No previous chapter to base fallback on - try to extract from URL
+              const chapterMatch = currentUrl.match(/chapter[_-]?(\d+\.?\d*)/i);
+              if (chapterMatch) {
+                const fallbackNumber = parseFloat(chapterMatch[1]);
+                console.warn(`⚠ Using fallback chapter number from URL: ${fallbackNumber}`);
+                currentChapterNumber = fallbackNumber;
+              } else {
+                // Last resort: throw error if we can't determine chapter number and have no previous chapter
+                throw new Error(`Could not determine chapter number from URL: ${currentUrl} and no previous chapter to base fallback on`);
+              }
+            }
           }
+          
+          // Update lastChapterNumber for next iteration (use the actual chapter number we're saving)
+          // This ensures subsequent fallbacks are based on the most recently assigned chapter number
+          lastChapterNumber = currentChapterNumber;
           
           // Format and save content
           const chapterPath = this.extractPathFromUrl(currentUrl);
@@ -436,7 +490,10 @@ export class ScraperEngine {
           currentUrl = prevUrl;
 
         } catch (error) {
-          console.error(`Error scraping ${currentUrl}:`, error.message);
+          const errorMsg = `Error scraping ${currentUrl}: ${error.message}`;
+          console.error(errorMsg);
+          this.errors.push({ url: currentUrl, type: 'scraping_error', message: errorMsg });
+          
           // Continue to previous chapter if possible, or break on critical errors
           const prevUrl = await plugin.getPreviousChapterUrl(page).catch(() => null);
           if (!prevUrl) {
@@ -455,6 +512,9 @@ export class ScraperEngine {
       }
 
       console.log(`\nReverse scraping complete. Scraped ${chapterCount} chapter(s).`);
+      
+      // Report accumulated errors
+      this.reportErrors();
 
     } finally {
       await browser.close();
@@ -597,6 +657,36 @@ export class ScraperEngine {
     }
 
     return navParts.join('');
+  }
+
+  reportErrors() {
+    if (this.errors.length === 0) {
+      return;
+    }
+
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`Scraping Errors Summary (${this.errors.length} error(s)):`);
+    console.log('='.repeat(60));
+    
+    // Group errors by type
+    const errorsByType = {};
+    for (const error of this.errors) {
+      if (!errorsByType[error.type]) {
+        errorsByType[error.type] = [];
+      }
+      errorsByType[error.type].push(error);
+    }
+    
+    // Report errors grouped by type
+    for (const [type, errors] of Object.entries(errorsByType)) {
+      console.log(`\n${type.toUpperCase().replace(/_/g, ' ')} (${errors.length}):`);
+      for (const error of errors) {
+        console.log(`  - ${error.url}`);
+        console.log(`    ${error.message}`);
+      }
+    }
+    
+    console.log(`\n${'='.repeat(60)}\n`);
   }
 
   async updateChapterNavigation(bookId, chapterPath, linkedChapterPath, isPreviousLink = false) {
