@@ -68,7 +68,8 @@ export class ScraperEngine {
           console.log(`\nScraping: ${currentUrl}`);
 
           // Navigate to current chapter URL
-          await page.goto(currentUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+          // Use 'domcontentloaded' for faster page loads (optimization)
+          await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
           // Scroll to load full content
           await this.scrollPage(page);
@@ -104,8 +105,9 @@ export class ScraperEngine {
           }
 
           // Extract content using plugin
+          // Reduced scrollDelay from 1000ms to 400ms for faster processing (optimization)
           const chapterData = await plugin.scrapeChapter(currentUrl, page, {
-            scrollDelay: 1000,
+            scrollDelay: 400,
             maxScrolls: 10
           });
 
@@ -303,7 +305,8 @@ export class ScraperEngine {
           console.log(`\nScraping: ${currentUrl}`);
 
           // Navigate to current chapter URL
-          await page.goto(currentUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+          // Use 'domcontentloaded' for faster page loads (optimization)
+          await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
           // Scroll to load full content
           await this.scrollPage(page);
