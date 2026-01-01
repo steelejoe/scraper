@@ -219,6 +219,21 @@ program
     }
   });
 
+// Generate TOC command
+program
+  .command('generate-toc')
+  .description('Generate or update TOC.md file for a book based on currently scraped chapters')
+  .argument('<book-id>', 'The ID of the book to generate TOC for')
+  .action(async (bookId) => {
+    try {
+      const engine = new ScraperEngine();
+      await engine.generateTOC(bookId);
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
 // Parse arguments
 program.parse();
 

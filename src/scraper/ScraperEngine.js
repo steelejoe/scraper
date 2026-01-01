@@ -186,6 +186,9 @@ export class ScraperEngine {
             } else {
               console.log(`✓ Saved chapter: ${chapterData.title}`);
             }
+            
+            // Update TOC after saving chapter
+            await this.generateTOC(bookId);
           } else {
             console.log(`⊘ Chapter already scraped, skipping: ${chapterData.title}`);
           }
@@ -460,6 +463,9 @@ export class ScraperEngine {
             } else {
               console.log(`✓ Saved chapter ${currentChapterNumber}: ${chapterData.title}`);
             }
+            
+            // Update TOC after saving chapter
+            await this.generateTOC(bookId);
           } else {
             console.log(`⊘ Chapter already scraped, skipping: ${currentChapterNumber} ${chapterData.title}`);
           }
@@ -575,15 +581,20 @@ export class ScraperEngine {
     await page.waitForTimeout(500);
   }
 
+  sanitizePathForFilename(chapterPath) {
+    // Sanitize chapter path for filename (used for both chapter files and TOC links)
+    return chapterPath
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '') || 'index';
+  }
+
   async saveChapter(bookId, chapterPath, chapterData, contentType, prevChapterPath = null, nextChapterPath = null, url = null) {
     const bookContentDir = path.join(CONTENT_DIR, bookId);
     await fs.ensureDir(bookContentDir);
 
     // Sanitize chapter path for filename
-    const sanitizedPath = chapterPath
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_|_$/g, '') || 'index';
+    const sanitizedPath = this.sanitizePathForFilename(chapterPath);
 
     const filename = `${sanitizedPath}.md`;
     const filePath = path.join(bookContentDir, filename);
@@ -633,10 +644,7 @@ export class ScraperEngine {
 
     // Previous chapter
     if (prevChapterPath) {
-      const prevSanitized = prevChapterPath
-        .replace(/[^a-zA-Z0-9]/g, '_')
-        .replace(/_+/g, '_')
-        .replace(/^_|_$/g, '') || 'index';
+      const prevSanitized = this.sanitizePathForFilename(prevChapterPath);
       navParts.push(`[← Previous Chapter](${prevSanitized}.md)`);
     } else {
       navParts.push('← Previous Chapter');
@@ -647,16 +655,123 @@ export class ScraperEngine {
 
     // Next chapter
     if (nextChapterPath) {
-      const nextSanitized = nextChapterPath
-        .replace(/[^a-zA-Z0-9]/g, '_')
-        .replace(/_+/g, '_')
-        .replace(/^_|_$/g, '') || 'index';
+      const nextSanitized = this.sanitizePathForFilename(nextChapterPath);
       navParts.push(`[Next Chapter →](${nextSanitized}.md)`);
     } else {
       navParts.push('Next Chapter →');
     }
 
     return navParts.join('');
+  }
+
+  async generateTOC(bookId) {
+    // Load book data
+    const book = await this.dataManager.getBook(bookId);
+    if (!book) {
+      throw new Error(`Book with id ${bookId} not found`);
+    }
+
+    const bookContentDir = path.join(CONTENT_DIR, bookId);
+    
+    // Get sorted chapters
+    const sortedChapters = book.getChaptersSorted();
+    
+    if (sortedChapters.length === 0) {
+      console.log('No chapters found. TOC.md will not be created.');
+      return;
+    }
+
+    // Read chapter titles from files and group by volume
+    const volumeMap = new Map(); // Map<volume, Array<{number, title, filename}>>
+    
+    for (const chapter of sortedChapters) {
+      const chapterPath = book.getChapterPath(chapter);
+      const chapterNumber = book.getChapterNumber(chapter);
+      const sanitizedPath = this.sanitizePathForFilename(chapterPath);
+      const filePath = path.join(bookContentDir, `${sanitizedPath}.md`);
+
+      let title = 'Untitled';
+      if (await fs.pathExists(filePath)) {
+        try {
+          const content = await fs.readFile(filePath, 'utf8');
+          // Extract title from markdown (first line should be # Title)
+          const titleMatch = content.match(/^#\s+(.+)$/m);
+          if (titleMatch) {
+            title = titleMatch[1].trim();
+            // Remove chapter number prefix if present (format: "2.027 Title" -> "Title")
+            title = title.replace(/^\d+\.?\d*\s+/, '');
+          }
+        } catch (error) {
+          console.warn(`Warning: Could not read chapter file ${filePath}: ${error.message}`);
+        }
+      }
+
+      // Extract volume from chapter number (e.g., 2.027 -> volume 2)
+      let volume = 1; // Default to volume 1
+      if (chapterNumber !== null) {
+        const volumeMatch = chapterNumber.toString().match(/^(\d+)\./);
+        if (volumeMatch) {
+          volume = parseInt(volumeMatch[1], 10);
+        } else {
+          // If no decimal point, assume volume 1
+          volume = 1;
+        }
+      }
+
+      if (!volumeMap.has(volume)) {
+        volumeMap.set(volume, []);
+      }
+
+      volumeMap.get(volume).push({
+        number: chapterNumber,
+        title: title,
+        filename: `${sanitizedPath}.md`
+      });
+    }
+
+    // Generate TOC markdown
+    let tocContent = `# Table of Contents\n\n`;
+    if (book.title) {
+      tocContent += `**${book.title}**\n\n`;
+    }
+    tocContent += `---\n\n`;
+
+    // Sort volumes and generate sections
+    const sortedVolumes = Array.from(volumeMap.keys()).sort((a, b) => a - b);
+    
+    for (const volume of sortedVolumes) {
+      const chapters = volumeMap.get(volume);
+      tocContent += `## 📖 Volume ${volume}\n\n`;
+      
+      for (const entry of chapters) {
+        // Format chapter number: if it's a decimal like 2.027, show just the chapter part (027)
+        // Otherwise show the full number
+        let numberStr = '';
+        if (entry.number !== null) {
+          const chapterNumStr = entry.number.toString();
+          if (chapterNumStr.includes('.')) {
+            // Extract chapter part after the decimal point
+            const parts = chapterNumStr.split('.');
+            if (parts.length >= 2) {
+              // Show chapter number (e.g., "027" from "2.027")
+              numberStr = `${parts[1]} `;
+            } else {
+              numberStr = `${entry.number} `;
+            }
+          } else {
+            numberStr = `${entry.number} `;
+          }
+        }
+        tocContent += `- [${numberStr}${entry.title}](${entry.filename})\n`;
+      }
+      
+      tocContent += `\n`;
+    }
+
+    // Write TOC.md
+    const tocPath = path.join(bookContentDir, 'TOC.md');
+    await fs.writeFile(tocPath, tocContent, 'utf8');
+    console.log(`✓ Updated TOC.md (${sortedChapters.length} chapters in ${sortedVolumes.length} volume(s))`);
   }
 
   reportErrors() {
@@ -693,15 +808,8 @@ export class ScraperEngine {
     const bookContentDir = path.join(CONTENT_DIR, bookId);
     
     // Sanitize paths for filenames
-    const sanitizedPath = chapterPath
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_|_$/g, '') || 'index';
-    
-    const linkedSanitized = linkedChapterPath
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_|_$/g, '') || 'index';
+    const sanitizedPath = this.sanitizePathForFilename(chapterPath);
+    const linkedSanitized = this.sanitizePathForFilename(linkedChapterPath);
 
     const filename = `${sanitizedPath}.md`;
     const filePath = path.join(bookContentDir, filename);
