@@ -17,12 +17,35 @@ program
 // Scrape command
 program
   .command('scrape')
-  .description('Scrape a specific book')
+  .description('Scrape a specific book (forward)')
   .argument('<book-id>', 'The ID of the book to scrape')
   .action(async (bookId) => {
     try {
       const engine = new ScraperEngine();
       await engine.scrapeBook(bookId);
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Reverse scrape command
+program
+  .command('scrape-reverse')
+  .description('Scrape a book in reverse (from initial chapter backwards). If chapter number is not provided, it will be extracted from the initial page.')
+  .argument('<book-id>', 'The ID of the book to scrape')
+  .argument('[chapter-number]', 'Optional: The chapter number of the initial chapter. If not provided, will be extracted from the initial page.')
+  .action(async (bookId, chapterNumber) => {
+    try {
+      let initialChapterNum = null;
+      if (chapterNumber) {
+        initialChapterNum = parseFloat(chapterNumber);
+        if (isNaN(initialChapterNum) || initialChapterNum <= 0) {
+          throw new Error('Chapter number must be a positive number');
+        }
+      }
+      const engine = new ScraperEngine();
+      await engine.scrapeBookReverse(bookId, initialChapterNum);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
@@ -59,7 +82,8 @@ program
   .description('Add a new book')
   .argument('<id>', 'Unique identifier for the book')
   .argument('<url>', 'URL of the first chapter (e.g., https://www.example.com/book/chapter-1)')
-  .action(async (id, url) => {
+  .option('-t, --title <title>', 'Optional: Book title')
+  .action(async (id, url, options) => {
     try {
       // Parse URL to extract domain and path
       let parsedUrl;
@@ -76,15 +100,22 @@ program
       // Plugin is the same as the domain (1:1 relationship)
       const plugin = rootSite;
 
-      // Verify root site exists
-      const site = await dataManager.getRootSite(rootSite);
+      // Check if root site exists, create it if it doesn't
+      let site = await dataManager.getRootSite(rootSite);
       if (!site) {
-        throw new Error(`Root site ${rootSite} not found. Add it first with 'add-site'`);
+        // Automatically create site record with default description
+        const description = `Site: ${rootSite}`;
+        site = new RootSite(rootSite, description, null);
+        await dataManager.addRootSite(site);
+        console.log(`✓ Auto-created root site: ${rootSite}`);
       }
 
-      const book = new Book(id, rootSite, rootPath, plugin);
+      const book = new Book(id, rootSite, rootPath, plugin, null, [], options.title || null);
       await dataManager.addBook(book);
       console.log(`✓ Added book: ${id}`);
+      if (book.title) {
+        console.log(`  Title: ${book.title}`);
+      }
       console.log(`  Root site: ${rootSite}`);
       console.log(`  Root path: ${rootPath}`);
       console.log(`  Plugin: ${plugin}`);
@@ -138,6 +169,9 @@ program
       console.log('─'.repeat(80));
       books.forEach(book => {
         console.log(`ID: ${book.id}`);
+        if (book.title) {
+          console.log(`Title: ${book.title}`);
+        }
         console.log(`Root Site: ${book.rootSite}`);
         console.log(`Root Path: ${book.rootPath}`);
         console.log(`Plugin: ${book.plugin}`);

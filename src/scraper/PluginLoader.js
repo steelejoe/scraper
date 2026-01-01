@@ -31,6 +31,7 @@ export class PluginLoader {
   validatePlugin(plugin) {
     const requiredMethods = [
       'getNextChapterUrl',
+      'getPreviousChapterUrl',
       'hasContent',
       'scrapeChapter',
       'getContentType'

@@ -3,7 +3,10 @@
  * 
  * FAKE IMPLEMENTATION FOR TESTING:
  * This plugin returns fake content to demonstrate how the scraper stores data.
- * It will generate 5 fake chapters with test content.
+ * It supports both forward and reverse scraping:
+ * - Forward: Will generate chapters 1-5 going forward
+ * - Reverse: Will generate chapters going backwards from the starting chapter number
+ * - Supports both integer and decimal chapter numbers (e.g., 1.5, 2.3)
  * 
  * For real use, replace the selectors and logic with site-specific implementations.
  */
@@ -17,17 +20,17 @@ export async function getNextChapterUrl(page) {
   try {
     const currentUrl = page.url();
     
-    // Extract chapter number from URL if possible
-    const chapterMatch = currentUrl.match(/chapter[_-]?(\d+)/i);
+    // Extract chapter number from URL if possible (supports decimals)
+    const chapterMatch = currentUrl.match(/chapter[_-]?(\d+\.?\d*)/i);
     let chapterNum = 1;
     
     if (chapterMatch) {
-      chapterNum = parseInt(chapterMatch[1], 10);
+      chapterNum = parseFloat(chapterMatch[1]);
     } else {
-      // Try to extract from path
-      const pathMatch = currentUrl.match(/\/(\d+)/);
+      // Try to extract from path (supports decimals)
+      const pathMatch = currentUrl.match(/\/(\d+\.?\d*)/);
       if (pathMatch) {
-        chapterNum = parseInt(pathMatch[1], 10);
+        chapterNum = parseFloat(pathMatch[1]);
       }
     }
     
@@ -36,12 +39,12 @@ export async function getNextChapterUrl(page) {
       const nextNum = chapterNum + 1;
       // Try to maintain the URL structure
       if (currentUrl.includes('/chapter-')) {
-        return currentUrl.replace(/chapter[_-]?\d+/i, `chapter-${nextNum}`);
+        return currentUrl.replace(/chapter[_-]?\d+\.?\d*/i, `chapter-${nextNum}`);
       } else if (currentUrl.includes('/chapter_')) {
-        return currentUrl.replace(/chapter[_-]?\d+/i, `chapter_${nextNum}`);
+        return currentUrl.replace(/chapter[_-]?\d+\.?\d*/i, `chapter_${nextNum}`);
       } else {
         // Generic next URL
-        const baseUrl = currentUrl.split('?')[0].replace(/\/\d+$/, '');
+        const baseUrl = currentUrl.split('?')[0].replace(/\/\d+\.?\d*$/, '');
         return `${baseUrl}/${nextNum}`;
       }
     }
@@ -49,6 +52,51 @@ export async function getNextChapterUrl(page) {
     return null; // No more chapters after 5
   } catch (error) {
     console.error('Error getting next chapter URL:', error);
+    return null;
+  }
+}
+
+/**
+ * Extracts the "previous chapter" URL from the current page.
+ * 
+ * FAKE IMPLEMENTATION: Returns fake previous chapter URLs for testing.
+ */
+export async function getPreviousChapterUrl(page) {
+  try {
+    const currentUrl = page.url();
+    
+    // Extract chapter number from URL if possible (supports decimals)
+    const chapterMatch = currentUrl.match(/chapter[_-]?(\d+\.?\d*)/i);
+    let chapterNum = 1;
+    
+    if (chapterMatch) {
+      chapterNum = parseFloat(chapterMatch[1]);
+    } else {
+      // Try to extract from path (supports decimals)
+      const pathMatch = currentUrl.match(/\/(\d+\.?\d*)/);
+      if (pathMatch) {
+        chapterNum = parseFloat(pathMatch[1]);
+      }
+    }
+    
+    // Return previous chapter URL (must be greater than 0.1 to allow decimals)
+    if (chapterNum > 0.1) {
+      const prevNum = chapterNum - 1;
+      // Try to maintain the URL structure
+      if (currentUrl.includes('/chapter-')) {
+        return currentUrl.replace(/chapter[_-]?\d+\.?\d*/i, `chapter-${prevNum}`);
+      } else if (currentUrl.includes('/chapter_')) {
+        return currentUrl.replace(/chapter[_-]?\d+\.?\d*/i, `chapter_${prevNum}`);
+      } else {
+        // Generic previous URL
+        const baseUrl = currentUrl.split('?')[0].replace(/\/\d+\.?\d*$/, '');
+        return `${baseUrl}/${prevNum}`;
+      }
+    }
+    
+    return null; // No previous chapter (this is chapter 1 or less)
+  } catch (error) {
+    console.error('Error getting previous chapter URL:', error);
     return null;
   }
 }
@@ -70,24 +118,32 @@ export async function hasContent(page) {
  */
 export async function scrapeChapter(url, page, options = {}) {
   try {
-    // Extract chapter number from URL for fake content
-    const chapterMatch = url.match(/chapter[_-]?(\d+)/i);
-    let chapterNum = 1;
+    // Use chapter number from options if provided (for reverse scraping)
+    // Otherwise extract from URL
+    let chapterNum = options.chapterNumber;
     
-    if (chapterMatch) {
-      chapterNum = parseInt(chapterMatch[1], 10);
-    } else {
-      const pathMatch = url.match(/\/(\d+)/);
-      if (pathMatch) {
-        chapterNum = parseInt(pathMatch[1], 10);
+    if (chapterNum === undefined || chapterNum === null) {
+      // Extract chapter number from URL (supports decimals)
+      const chapterMatch = url.match(/chapter[_-]?(\d+\.?\d*)/i);
+      
+      if (chapterMatch) {
+        chapterNum = parseFloat(chapterMatch[1]);
+      } else {
+        const pathMatch = url.match(/\/(\d+\.?\d*)/);
+        if (pathMatch) {
+          chapterNum = parseFloat(pathMatch[1]);
+        } else {
+          chapterNum = 1; // Default fallback
+        }
       }
     }
 
-    // Generate fake title
-    const title = `Chapter ${chapterNum}: The Journey Continues`;
+    // Generate fake title (format nicely for decimals)
+    const chapterNumStr = chapterNum % 1 === 0 ? chapterNum.toString() : chapterNum.toFixed(1);
+    const title = `Chapter ${chapterNumStr}: The Journey Continues`;
 
     // Generate fake content with some variety
-    const fakeContent = `This is fake content for testing purposes. This is Chapter ${chapterNum} of the example book.
+    const fakeContent = `This is fake content for testing purposes. This is Chapter ${chapterNumStr} of the example book.
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
 
@@ -96,7 +152,7 @@ In this chapter, our hero faces new challenges and discovers important informati
 **Key Points:**
 - This is a test chapter
 - Content is generated automatically
-- Chapter number: ${chapterNum}
+- Chapter number: ${chapterNumStr}
 - URL: ${url}
 
 The story progresses with each chapter, building upon previous events and introducing new elements to keep the reader engaged. This is purely for demonstration purposes to show how the scraper stores content.
@@ -108,6 +164,7 @@ The end of this fake chapter content.`;
     return {
       title,
       content: fakeContent,
+      chapterNumber: chapterNum, // Can be integer or decimal
       images: undefined // No images for text content type
     };
   } catch (error) {

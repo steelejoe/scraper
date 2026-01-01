@@ -26,6 +26,24 @@ export async function getNextChapterUrl(page) {
 }
 
 /**
+ * REQUIRED: Extracts the "previous chapter" URL from the current page.
+ * This is used for reverse scraping to find the previous chapter link.
+ * 
+ * @param {Page} page - Puppeteer page object
+ * @returns {Promise<string|null>} - Previous chapter URL or null if no previous chapter exists
+ */
+export async function getPreviousChapterUrl(page) {
+  // Implement site-specific logic to find the "previous chapter" link
+  // Example:
+  // const prevLink = await page.$('a.prev-chapter, a.previous-chapter');
+  // if (!prevLink) return null;
+  // const href = await page.evaluate(el => el.href, prevLink);
+  // return href || null;
+  
+  throw new Error('getPreviousChapterUrl must be implemented by plugin');
+}
+
+/**
  * REQUIRED: Detects if the current page has actual content.
  * This prevents updating lastPathScraped when navigating to empty/placeholder pages.
  * 
@@ -50,20 +68,25 @@ export async function hasContent(page) {
  * @param {string} url - The URL of the chapter to scrape
  * @param {Page} page - Puppeteer page object
  * @param {Object} options - Scraping options (scrollDelay, maxScrolls, etc.)
- * @returns {Promise<Object>} - Object with { title, content, images? }
+ * @param {number} options.chapterNumber - Optional chapter number if known (for reverse scraping)
+ * @returns {Promise<Object>} - Object with { title, content, chapterNumber, bookTitle?, images? }
  */
 export async function scrapeChapter(url, page, options = {}) {
   // Implement site-specific scraping logic
   // Should handle:
   // - Scrolling to load lazy content (if needed)
   // - Extracting title
+  // - Extracting chapter number (from URL, title, or page content)
   // - Extracting text content
   // - Extracting images (if applicable)
+  // - Extracting book title (optional, only if not already set in book record)
   // 
   // Return format:
   // {
-  //   title: string,
+  //   title: string,  // Chapter title
   //   content: string,  // Text content
+  //   chapterNumber: number,  // Chapter number for ordering
+  //   bookTitle?: string,  // Optional: Book title (only used if book record doesn't have a title)
   //   images?: string[] // Optional array of image URLs
   // }
   
