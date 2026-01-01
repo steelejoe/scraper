@@ -132,9 +132,9 @@ export async function scrapeChapter(url, page, options = {}) {
         // Also handle if there's just whitespace and WordyCrown at the end
         cleaned = cleaned.replace(/\s+WordyCrown\s*$/i, '');
         
-        // Remove volume/chapter prefix patterns like "V2 Chapter 27: " or "Chapter 27: "
-        cleaned = cleaned.replace(/^V\d+\s+Chapter\s+\d+[:\s]*/i, '');
-        cleaned = cleaned.replace(/^Chapter\s+\d+[:\s]*/i, '');
+        // Remove volume/chapter/episode prefix patterns like "V2 Chapter 27: ", "Chapter 27: ", "Episode 27: ", "ep 27: ", etc.
+        cleaned = cleaned.replace(/^V\d+\s+(?:Chapter|Chap|Episode|Ep\.?)\s+\d+[:\s]*/i, '');
+        cleaned = cleaned.replace(/^(?:Chapter|Chap|Episode|Ep\.?)\s+\d+[:\s]*/i, '');
         
         cleaned = cleaned.trim();
         
@@ -239,20 +239,22 @@ export async function scrapeChapter(url, page, options = {}) {
       };
       
       // Helper function to extract chapter number from title text
+      // Handles "Chapter", "Chap", "Episode", "ep", "Ep", etc.
       const extractChapterNumber = (titleText) => {
         if (!titleText) return null;
         
         let volume = null;
         let chapter = null;
         
-        // Try pattern with explicit volume: "V2 Chapter 27" or "v2 chapter 27"
-        let match = titleText.match(/V(\d+)\s+Chapter\s+(\d+)/i);
+        // Try pattern with explicit volume: "V2 Chapter 27", "V2 Episode 27", "v2 ep 27", etc.
+        // Match: V{number} followed by Chapter/Chap/Episode/ep (case insensitive) followed by {number}
+        let match = titleText.match(/V(\d+)\s+(?:Chapter|Chap|Episode|Ep\.?)\s+(\d+)/i);
         if (match) {
           volume = parseInt(match[1], 10);
           chapter = parseInt(match[2], 10);
         } else {
-          // Try pattern without volume: "Chapter 27" - assume volume 1
-          match = titleText.match(/Chapter\s+(\d+)/i);
+          // Try pattern without volume: "Chapter 27", "Episode 27", "ep 27", etc. - assume volume 1
+          match = titleText.match(/(?:Chapter|Chap|Episode|Ep\.?)\s+(\d+)/i);
           if (match) {
             volume = 1;
             chapter = parseInt(match[1], 10);
