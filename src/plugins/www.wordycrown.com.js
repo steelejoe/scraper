@@ -112,8 +112,8 @@ export async function scrapeChapter(url, page, options = {}) {
     // Extract both title and chapter number from page in a single evaluation
     // The title attribute contains format like "V2 Chapter 27: ..." or "Chapter 27: ..."
     // If no volume is specified, assume volume 1
-    // Chapter numbers are left-padded to 3 digits, and part numbers are appended
-    // Example: "V2 Chapter 137" with "part 1" → 2.1371
+    // Chapter numbers are left-padded to 4 digits, and part numbers are appended
+    // Example: "V2 Chapter 137" with "part 1" → 2.01371
     const { title, chapterNumber } = await page.evaluate(() => {
       // Helper function to clean title text
       const cleanTitle = (text) => {
@@ -200,6 +200,36 @@ export async function scrapeChapter(url, page, options = {}) {
         return null;
       };
       
+      // Helper function to normalize chapter number decimal portion to at least 4 digits
+      const normalizeChapterNumber = (volume, chapter, part = null) => {
+        // Left-pad chapter to 4 digits for the integer part
+        const chapterPadded = chapter.toString().padStart(4, '0');
+        
+        // Format as {volume}.{chapter_padded} and ensure decimal portion has at least 4 digits
+        // If part is provided, append it; otherwise ensure we have at least 4 digits after decimal
+        let chapterNumberStr;
+        if (part !== null) {
+          // Format: volume.chapterPadded + part (e.g., 2.01371)
+          chapterNumberStr = `${volume}.${chapterPadded}${part}`;
+        } else {
+          // Format: volume.chapterPadded (e.g., 2.0027)
+          chapterNumberStr = `${volume}.${chapterPadded}`;
+        }
+        
+        // Parse and reformat to ensure proper decimal precision
+        // Split by decimal point to normalize
+        const parts = chapterNumberStr.split('.');
+        if (parts.length === 2) {
+          const integerPart = parts[0];
+          const decimalPart = parts[1];
+          // Ensure decimal part has at least 4 digits (right-pad with zeros if needed)
+          const normalizedDecimal = decimalPart.padEnd(4, '0');
+          chapterNumberStr = `${integerPart}.${normalizedDecimal}`;
+        }
+        
+        return parseFloat(chapterNumberStr);
+      };
+      
       // Helper function to extract chapter number from title text
       const extractChapterNumber = (titleText) => {
         if (!titleText) return null;
@@ -223,8 +253,8 @@ export async function scrapeChapter(url, page, options = {}) {
           }
         }
         
-        // Left-pad chapter to 3 digits
-        const chapterPadded = chapter.toString().padStart(3, '0');
+        // Left-pad chapter to 4 digits
+        const chapterPadded = chapter.toString().padStart(4, '0');
         
         // Format as {volume}.{chapter_padded} (part will be appended later if found)
         return {
@@ -264,9 +294,11 @@ export async function scrapeChapter(url, page, options = {}) {
           if (partNumber !== null) {
             chapterResult.part = partNumber;
           }
-          foundChapterNumber = chapterResult.part !== null
-            ? parseFloat(`${chapterResult.volume}.${chapterResult.chapterPadded}${chapterResult.part}`)
-            : parseFloat(`${chapterResult.volume}.${chapterResult.chapterPadded}`);
+          foundChapterNumber = normalizeChapterNumber(
+            chapterResult.volume,
+            chapterResult.chapter,
+            chapterResult.part
+          );
         }
       }
       
@@ -294,10 +326,12 @@ export async function scrapeChapter(url, page, options = {}) {
             if (partNumber !== null) {
               result.part = partNumber;
             }
-            // Format: {volume}.{chapter_padded}{part}
-            foundChapterNumber = result.part !== null 
-              ? parseFloat(`${result.volume}.${result.chapterPadded}${result.part}`)
-              : parseFloat(`${result.volume}.${result.chapterPadded}`);
+            // Format: {volume}.{chapter_padded}{part} with normalization
+            foundChapterNumber = normalizeChapterNumber(
+              result.volume,
+              result.chapter,
+              result.part
+            );
             break;
           }
           
@@ -310,10 +344,12 @@ export async function scrapeChapter(url, page, options = {}) {
               if (partNumber !== null) {
                 childResult.part = partNumber;
               }
-              // Format: {volume}.{chapter_padded}{part}
-              foundChapterNumber = childResult.part !== null 
-                ? parseFloat(`${childResult.volume}.${childResult.chapterPadded}${childResult.part}`)
-                : parseFloat(`${childResult.volume}.${childResult.chapterPadded}`);
+              // Format: {volume}.{chapter_padded}{part} with normalization
+              foundChapterNumber = normalizeChapterNumber(
+                childResult.volume,
+                childResult.chapter,
+                childResult.part
+              );
               break;
             }
           }
@@ -335,10 +371,12 @@ export async function scrapeChapter(url, page, options = {}) {
             if (partNumber !== null) {
               result.part = partNumber;
             }
-            // Format: {volume}.{chapter_padded}{part}
-            foundChapterNumber = result.part !== null 
-              ? parseFloat(`${result.volume}.${result.chapterPadded}${result.part}`)
-              : parseFloat(`${result.volume}.${result.chapterPadded}`);
+            // Format: {volume}.{chapter_padded}{part} with normalization
+            foundChapterNumber = normalizeChapterNumber(
+              result.volume,
+              result.chapter,
+              result.part
+            );
             break;
           }
         }

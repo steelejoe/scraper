@@ -386,9 +386,10 @@ export class ScraperEngine {
             this.errors.push({ url: currentUrl, type: 'chapter_number', message: errorMsg });
             
             // Calculate fallback chapter number based on last scraped chapter
-            // If last chapter was 1.113, use 1.11299 (closest number that sorts before it)
-            // For subsequent fallback chapters, use the previous fallback as base: 1.11298, 1.11297, etc.
+            // If last chapter was 1.1113, use 1.11129 (closest number that sorts before it)
+            // For subsequent fallback chapters, use the previous fallback as base: 1.11128, 1.11127, etc.
             // This gives us a buffer of 99 fallback chapters (0.00001 to 0.00099)
+            // Note: With 4-digit chapter padding, chapters are formatted as volume.XXXX (e.g., 1.1113)
             if (lastChapterNumber !== null && lastChapterNumber !== undefined) {
               // Calculate the fallback: subtract 0.00001 from the last chapter number
               // This ensures fallback chapters sort before the last known chapter
@@ -744,8 +745,9 @@ export class ScraperEngine {
       tocContent += `## 📖 Volume ${volume}\n\n`;
       
       for (const entry of chapters) {
-        // Format chapter number: if it's a decimal like 2.027, show just the chapter part (027)
+        // Format chapter number: if it's a decimal like 2.0027, show just the chapter part (0027)
         // Otherwise show the full number
+        // With 4-digit padding, chapters are formatted as volume.XXXX (e.g., 2.0027 for chapter 27)
         let numberStr = '';
         if (entry.number !== null) {
           const chapterNumStr = entry.number.toString();
@@ -753,7 +755,7 @@ export class ScraperEngine {
             // Extract chapter part after the decimal point
             const parts = chapterNumStr.split('.');
             if (parts.length >= 2) {
-              // Show chapter number (e.g., "027" from "2.027")
+              // Show chapter number (e.g., "0027" from "2.0027")
               numberStr = `${parts[1]} `;
             } else {
               numberStr = `${entry.number} `;
