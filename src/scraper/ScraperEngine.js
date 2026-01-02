@@ -1,9 +1,13 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import path from 'path';
 import fs from 'fs-extra';
 import { fileURLToPath } from 'url';
 import { DataManager } from '../data/DataManager.js';
 import { PluginLoader } from './PluginLoader.js';
+
+// Use stealth plugin to help bypass Cloudflare and other bot detection
+puppeteer.use(StealthPlugin());
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +21,7 @@ export class ScraperEngine {
     this.errors = []; // Accumulate errors during scraping
   }
 
-  async scrapeBook(bookId, forceSave = false) {
+  async scrapeBook(bookId, forceSave = false, debug = false) {
     // Reset errors for this scraping session
     this.errors = [];
     
@@ -35,10 +39,21 @@ export class ScraperEngine {
     // Load appropriate plugin
     const plugin = await this.pluginLoader.loadPlugin(book.plugin);
 
+    // Check if plugin indicates Cloudflare protection is used
+    // Use non-headless mode for Cloudflare sites (harder for Cloudflare to detect)
+    const usesCloudflare = plugin.isCloudflarePage ? plugin.isCloudflarePage() : false;
+    const headlessMode = usesCloudflare ? false : 'new';
+
     // Launch Puppeteer browser
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: headlessMode,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--window-size=1920,1080'
+      ]
     });
 
     try {
@@ -82,7 +97,7 @@ export class ScraperEngine {
           await this.scrollPage(page);
 
           // Check if page has content
-          const hasContent = await plugin.hasContent(page);
+          const hasContent = await plugin.hasContent(page, { debug });
           if (!hasContent) {
             console.log('No content detected on page');
             // Try to get next chapter URL - if this was the last scraped page and it's now empty,
@@ -118,7 +133,8 @@ export class ScraperEngine {
           // Reduced scrollDelay from 1000ms to 400ms for faster processing (optimization)
           const chapterData = await plugin.scrapeChapter(currentUrl, page, {
             scrollDelay: 400,
-            maxScrolls: 10
+            maxScrolls: 10,
+            debug
           });
 
           // Update book title if not set and plugin provides it
@@ -264,7 +280,7 @@ export class ScraperEngine {
     }
   }
 
-  async scrapeBookReverse(bookId, initialChapterNumber = null, forceSave = false) {
+  async scrapeBookReverse(bookId, initialChapterNumber = null, forceSave = false, debug = false) {
     // Reset errors for this scraping session
     this.errors = [];
     
@@ -282,10 +298,21 @@ export class ScraperEngine {
     // Load appropriate plugin
     const plugin = await this.pluginLoader.loadPlugin(book.plugin);
 
+    // Check if plugin indicates Cloudflare protection is used
+    // Use non-headless mode for Cloudflare sites (harder for Cloudflare to detect)
+    const usesCloudflare = plugin.isCloudflarePage ? plugin.isCloudflarePage() : false;
+    const headlessMode = usesCloudflare ? false : 'new';
+
     // Launch Puppeteer browser
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: headlessMode,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--window-size=1920,1080'
+      ]
     });
 
     try {
@@ -325,15 +352,16 @@ export class ScraperEngine {
         await this.scrollPage(page);
         
         // Check if page has content
-        const hasContent = await plugin.hasContent(page);
+        const hasContent = await plugin.hasContent(page, { debug });
         if (!hasContent) {
           throw new Error('Initial page has no content. Cannot determine chapter number.');
         }
-        
+
         // Scrape the initial page to get chapter number
         const initialChapterData = await plugin.scrapeChapter(currentUrl, page, {
           scrollDelay: 1000,
-          maxScrolls: 10
+          maxScrolls: 10,
+          debug
         });
         
         if (!initialChapterData.chapterNumber) {
@@ -361,7 +389,7 @@ export class ScraperEngine {
           await this.scrollPage(page);
 
           // Check if page has content
-          const hasContent = await plugin.hasContent(page);
+          const hasContent = await plugin.hasContent(page, { debug });
           if (!hasContent) {
             console.log('No content detected on page');
             // Try to get previous chapter URL - if this was the last scraped page and it's now empty,
@@ -397,7 +425,8 @@ export class ScraperEngine {
           // Don't pass calculated chapterNumber - let plugin extract from URL for accuracy
           const chapterData = await plugin.scrapeChapter(currentUrl, page, {
             scrollDelay: 1000,
-            maxScrolls: 10
+            maxScrolls: 10,
+            debug
           });
 
           // Update book title if not set and plugin provides it

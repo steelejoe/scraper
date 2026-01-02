@@ -105,6 +105,16 @@ export function getContentType() {
 }
 
 /**
+ * OPTIONAL: Returns whether this site uses Cloudflare protection.
+ * Default implementation returns false. Override in plugins for sites that use Cloudflare.
+ * 
+ * @returns {boolean} - True if site uses Cloudflare, false otherwise
+ */
+export function isCloudflarePage() {
+  return false; // Default: no Cloudflare
+}
+
+/**
  * OPTIONAL: Handles authentication/login for sites that require it.
  * Only called if credentials are provided in the root site configuration.
  * 

@@ -20,10 +20,11 @@ program
   .description('Scrape a specific book (forward)')
   .argument('<book-id>', 'The ID of the book to scrape')
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
+  .option('--debug', 'Enable debug logging output')
   .action(async (bookId, options) => {
     try {
       const engine = new ScraperEngine();
-      await engine.scrapeBook(bookId, options.forceSave || false);
+      await engine.scrapeBook(bookId, options.forceSave || false, options.debug || false);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
@@ -37,6 +38,7 @@ program
   .argument('<book-id>', 'The ID of the book to scrape')
   .argument('[chapter-number]', 'Optional: The chapter number of the initial chapter. If not provided, will be extracted from the initial page.')
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
+  .option('--debug', 'Enable debug logging output')
   .action(async (bookId, chapterNumber, options) => {
     try {
       let initialChapterNum = null;
@@ -47,7 +49,7 @@ program
         }
       }
       const engine = new ScraperEngine();
-      await engine.scrapeBookReverse(bookId, initialChapterNum, options.forceSave || false);
+      await engine.scrapeBookReverse(bookId, initialChapterNum, options.forceSave || false, options.debug || false);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
@@ -198,6 +200,7 @@ program
   .description('Resume scraping a book from the last scraped path')
   .argument('<book-id>', 'The ID of the book to resume scraping')
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
+  .option('--debug', 'Enable debug logging output')
   .action(async (bookId, options) => {
     try {
       const book = await dataManager.getBook(bookId);
@@ -212,7 +215,7 @@ program
       }
 
       const engine = new ScraperEngine();
-      await engine.scrapeBook(bookId, options.forceSave || false);
+      await engine.scrapeBook(bookId, options.forceSave || false, options.debug || false);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
