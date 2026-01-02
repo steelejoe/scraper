@@ -702,9 +702,54 @@ export class ScraperEngine {
     }
     
     if (contentType === 'image' && chapterData.images && chapterData.images.length > 0) {
-      // Add images
-      for (const imageUrl of chapterData.images) {
-        markdown += `![Image](${imageUrl})\n\n`;
+      // For image content, download images and save in chapter subfolder
+      const chapterImageDir = path.join(bookContentDir, sanitizedPath);
+      await fs.ensureDir(chapterImageDir);
+      
+      const localImagePaths = [];
+      
+      for (let i = 0; i < chapterData.images.length; i++) {
+        const imageUrl = chapterData.images[i];
+        try {
+          // Determine file extension from URL or default to .jpg
+          const urlPath = new URL(imageUrl).pathname;
+          const extMatch = urlPath.match(/\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i);
+          const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+          
+          // Generate filename: image_001.jpg, image_002.jpg, etc.
+          const imageFilename = `image_${String(i + 1).padStart(3, '0')}.${ext}`;
+          const imagePath = path.join(chapterImageDir, imageFilename);
+          
+          // Download image
+          console.log(`  Downloading image ${i + 1}/${chapterData.images.length}...`);
+          const response = await fetch(imageUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          
+          await fs.writeFile(imagePath, buffer);
+          
+          // Store relative path from markdown file to image
+          const relativeImagePath = path.join(sanitizedPath, imageFilename).replace(/\\/g, '/');
+          localImagePaths.push(relativeImagePath);
+        } catch (error) {
+          console.error(`  Failed to download image ${i + 1} (${imageUrl}): ${error.message}`);
+          // Fallback to original URL if download fails
+          localImagePaths.push(imageUrl);
+        }
+      }
+      
+      // Add images with local paths
+      for (const imagePath of localImagePaths) {
+        markdown += `![Image](${imagePath})\n\n`;
       }
     } else {
       // Add text content

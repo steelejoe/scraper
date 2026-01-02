@@ -5,6 +5,7 @@ import { DataManager } from '../data/DataManager.js';
 import { RootSite } from '../models/RootSite.js';
 import { Book } from '../models/Book.js';
 import { ScraperEngine } from '../scraper/ScraperEngine.js';
+import { PluginLoader } from '../scraper/PluginLoader.js';
 
 const program = new Command();
 const dataManager = new DataManager();
@@ -108,6 +109,16 @@ program
       // Plugin is the same as the domain (1:1 relationship)
       const plugin = rootSite;
 
+      // Load plugin to determine contentType
+      const pluginLoader = new PluginLoader();
+      let contentType = null;
+      try {
+        const pluginModule = await pluginLoader.loadPlugin(plugin);
+        contentType = pluginModule.getContentType();
+      } catch (error) {
+        console.warn(`⚠ Warning: Could not load plugin for ${plugin}, contentType will be null: ${error.message}`);
+      }
+
       // Check if root site exists, create it if it doesn't
       let site = await dataManager.getRootSite(rootSite);
       if (!site) {
@@ -118,7 +129,7 @@ program
         console.log(`✓ Auto-created root site: ${rootSite}`);
       }
 
-      const book = new Book(id, rootSite, normalizedRootPath, plugin, null, [], options.title || null, startingPath);
+      const book = new Book(id, rootSite, normalizedRootPath, plugin, null, [], options.title || null, startingPath, contentType);
       await dataManager.addBook(book);
       console.log(`✓ Added book: ${id}`);
       if (book.title) {
@@ -128,6 +139,9 @@ program
       console.log(`  Root path: ${normalizedRootPath}`);
       console.log(`  Starting path: ${startingPath}`);
       console.log(`  Plugin: ${plugin}`);
+      if (book.contentType) {
+        console.log(`  Content type: ${book.contentType}`);
+      }
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
