@@ -11,9 +11,10 @@ Some thoughts about where to go next. Some of these are definites, others are po
 - [x] Add image site support
 - [x] Add support for taking in a list of book URLs and creating books
 - [x] Make the `root-path` parameter optional based on the book URL
+- [u] Add an option for pushing content to a remote storage site
 - [ ] Add a `scrape-all` command to try and scrape all books
 - [ ] Add completed book flag to avoid rescraping with `scrape-all` command
-- [ ] Add option to mark a book complete
+- [ ] Add CLI option to mark a book complete
 - [ ] Support optional book cover images
 - [ ] Add option for scraping single page
 - [ ] Add option for flushing all pages from a book (for debugging plugins)
