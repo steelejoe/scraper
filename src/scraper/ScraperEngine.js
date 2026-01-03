@@ -52,7 +52,7 @@ export class ScraperEngine {
     this.errors = []; // Accumulate errors during scraping
   }
 
-  async scrapeBook(bookId, forceSave = false, debug = false) {
+  async scrapeBook(bookId, forceSave = false, debug = false, proxy = null) {
     // Reset errors for this scraping session
     this.errors = [];
     
@@ -76,15 +76,21 @@ export class ScraperEngine {
     const headlessMode = usesCloudflare ? false : 'new';
 
     // Launch Puppeteer browser
+    const launchArgs = [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--window-size=1920,1080'
+    ];
+
+    if (proxy) {
+      launchArgs.push(`--proxy-server=${proxy}`);
+    }
+
     const browser = await puppeteer.launch({
       headless: headlessMode,
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--window-size=1920,1080'
-      ]
+      args: launchArgs
     });
 
     try {
@@ -311,7 +317,7 @@ export class ScraperEngine {
     }
   }
 
-  async scrapeBookReverse(bookId, initialChapterNumber = null, forceSave = false, debug = false) {
+  async scrapeBookReverse(bookId, initialChapterNumber = null, forceSave = false, debug = false, proxy = null) {
     // Reset errors for this scraping session
     this.errors = [];
     
@@ -335,15 +341,21 @@ export class ScraperEngine {
     const headlessMode = usesCloudflare ? false : 'new';
 
     // Launch Puppeteer browser
+    const launchArgs = [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--window-size=1920,1080'
+    ];
+
+    if (proxy) {
+      launchArgs.push(`--proxy-server=${proxy}`);
+    }
+
     const browser = await puppeteer.launch({
       headless: headlessMode,
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--window-size=1920,1080'
-      ]
+      args: launchArgs
     });
 
     try {

@@ -42,6 +42,23 @@ import { PluginLoader } from '../scraper/PluginLoader.js';
 const program = new Command();
 const dataManager = new DataManager();
 
+// Helper function to determine proxy string from options
+function getProxyFromOptions(options) {
+  if (!options.tor) {
+    return null;
+  }
+  
+  if (options.torProxy) {
+    // If proxy is provided, ensure it has socks5:// prefix if missing
+    return options.torProxy.startsWith('socks5://') 
+      ? options.torProxy 
+      : `socks5://${options.torProxy}`;
+  }
+  
+  // Default Tor proxy
+  return 'socks5://127.0.0.1:9050';
+}
+
 program
   .name('scraper')
   .description('Plugin-based web scraper for chapter-based content')
@@ -54,10 +71,13 @@ program
   .argument('<book-id>', 'The ID of the book to scrape')
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
   .option('--debug', 'Enable debug logging output')
+  .option('--tor', 'Use Tor proxy for scraping (defaults to socks5://127.0.0.1:9050)')
+  .option('--tor-proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
   .action(async (bookId, options) => {
     try {
       const engine = new ScraperEngine();
-      await engine.scrapeBook(bookId, options.forceSave || false, options.debug || false);
+      const proxy = getProxyFromOptions(options);
+      await engine.scrapeBook(bookId, options.forceSave || false, options.debug || false, proxy);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
@@ -72,6 +92,8 @@ program
   .argument('[chapter-number]', 'Optional: The chapter number of the initial chapter. If not provided, will be extracted from the initial page.')
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
   .option('--debug', 'Enable debug logging output')
+  .option('--tor', 'Use Tor proxy for scraping (defaults to socks5://127.0.0.1:9050)')
+  .option('--tor-proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
   .action(async (bookId, chapterNumber, options) => {
     try {
       let initialChapterNum = null;
@@ -82,7 +104,8 @@ program
         }
       }
       const engine = new ScraperEngine();
-      await engine.scrapeBookReverse(bookId, initialChapterNum, options.forceSave || false, options.debug || false);
+      const proxy = getProxyFromOptions(options);
+      await engine.scrapeBookReverse(bookId, initialChapterNum, options.forceSave || false, options.debug || false, proxy);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
@@ -271,6 +294,8 @@ program
   .argument('<book-id>', 'The ID of the book to resume scraping')
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
   .option('--debug', 'Enable debug logging output')
+  .option('--tor', 'Use Tor proxy for scraping (defaults to socks5://127.0.0.1:9050)')
+  .option('--tor-proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
   .action(async (bookId, options) => {
     try {
       const book = await dataManager.getBook(bookId);
@@ -285,7 +310,8 @@ program
       }
 
       const engine = new ScraperEngine();
-      await engine.scrapeBook(bookId, options.forceSave || false, options.debug || false);
+      const proxy = getProxyFromOptions(options);
+      await engine.scrapeBook(bookId, options.forceSave || false, options.debug || false, proxy);
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
