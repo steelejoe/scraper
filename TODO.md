@@ -6,10 +6,13 @@ Some thoughts about where to go next. Some of these are definites, others are po
 - [x] Capture all errors when scraping and report when stopping
 - [x] Fix handling of multiple parts
 - [x] Implement "end of chapters" detection - this looks pretty good?
-- [ ] Add text vs image tags to book records and site records
-- [ ] Add image site support
-- [ ] Add support for taking in a list of book URLs and creating books
-- [ ] Add completed book flag to avoid rescraping with "scrape-all"
+- [!] Add support for Cloudflare protected sites
+- [x] Add text vs image tags to book records and site records
+- [x] Add image site support
+- [x] Add support for taking in a list of book URLs and creating books
+- [x] Make the `root-path` parameter optional based on the book URL
+- [ ] Add a `scrape-all` command to try and scrape all books
+- [ ] Add completed book flag to avoid rescraping with `scrape-all` command
 - [ ] Add option to mark a book complete
 - [ ] Support optional book cover images
 - [ ] Add option for scraping single page
