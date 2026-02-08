@@ -9,7 +9,12 @@ This guide will help you test the scraper application comprehensively.
 npm install
 ```
 
-2. **Verify installation**:
+2. **If using submodules** (scraper-plugins as a submodule), initialize them:
+```bash
+git submodule update --init --recursive
+```
+
+3. **Verify installation**:
 ```bash
 node src/cli/index.js --help
 ```
@@ -78,7 +83,7 @@ You should see the site listed with its description and credential status.
 node src/cli/index.js add-book test-book "https://example.com/book/chapter-1"
 ```
 
-**Note:** The plugin is automatically determined from the domain. For example, a URL with domain `example.com` will use the plugin `src/plugins/example.com.js`. The plugin name must match the domain (1:1 relationship).
+**Note:** The plugin is automatically determined from the domain. Plugins are searched recursively under `src/plugins/` (excluding folders starting with `.`). For example, a URL with domain `example.com` will use `src/plugins/example.com.js` or `src/plugins/site-plugins/plugins/example.com.js`. The plugin name must match the domain (1:1 relationship).
 
 **Optional flags:**
 - `--title "Book Title"`: Set the book title
@@ -117,7 +122,7 @@ This should:
 To test actual scraping, you'll need to:
 
 1. **Create or modify a plugin** for your target website:
-   - Copy `src/plugins/base.js` to `src/plugins/yourdomain.com.js`
+   - Copy `src/plugins/base.js` to `src/plugins/yourdomain.com.js` or `src/plugins/site-plugins/plugins/yourdomain.com.js`
    - Update the selectors and logic for your target site
    - See the plugin documentation in `src/plugins/base.js` for the required interface
    - Implement all required methods:
@@ -385,7 +390,7 @@ graph TB
 ```
 
 1. **Check plugin loading**:
-   - Ensure plugin file exists: `src/plugins/{domain}.js`
+   - Ensure plugin file exists under `src/plugins/` or `src/plugins/site-plugins/plugins/`: `{domain}.js`
    - Verify all required methods are exported
    - Check for syntax errors
    - Run with `--debug` flag for verbose output
@@ -497,7 +502,7 @@ For development, you can:
 ## Troubleshooting
 
 ### "Plugin not found"
-- Ensure plugin file exists in `src/plugins/{domain}.js`
+- Ensure plugin file exists under `src/plugins/` (e.g., `src/plugins/{domain}.js` or `src/plugins/site-plugins/plugins/{domain}.js`)
 - Check that domain matches exactly (including subdomain)
 - Verify file has correct exports
 

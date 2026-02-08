@@ -22,6 +22,25 @@ A plugin-based Node.js application for scraping chapter-based content from websi
 npm install
 ```
 
+### Optional: Site Plugins Submodule
+
+Site-specific plugins (manhuaus.org, novelbuddy.com, novellive.app, www.wordycrown.com) are included in `src/plugins/site-plugins/`. If you use a separate scraper-plugins repository as a submodule:
+
+**Clone with submodules:**
+```bash
+git clone --recurse-submodules https://github.com/steelejoe/scraper.git
+```
+
+**If already cloned without submodules:**
+```bash
+git submodule update --init --recursive
+```
+
+**To add scraper-plugins as a submodule** (after creating the repo on GitHub):
+```bash
+git submodule add https://github.com/yourusername/scraper-plugins.git src/plugins/site-plugins
+```
+
 ## Usage
 
 ### Add a Root Site
@@ -127,7 +146,10 @@ scraper/
 │   │   └── PluginLoader.js
 │   └── plugins/          # Plugin files (one per domain)
 │       ├── base.js       # Plugin template
-│       └── {domain}.js   # Site-specific plugins
+│       ├── example.com.js # Example plugin
+│       └── site-plugins/ # Site-specific plugins (or submodule)
+│           └── plugins/
+│               └── {domain}.js
 ├── content/              # Data directory (created at runtime)
 │   ├── root-sites.json   # Root site configurations
 │   ├── books.json        # Book metadata
@@ -227,7 +249,9 @@ graph LR
 
 ## Creating a Plugin
 
-1. Copy `src/plugins/base.js` to `src/plugins/{domain}.js`
+Plugins can live in `src/plugins/` or any visible subdirectory (e.g., `src/plugins/site-plugins/plugins/`). Folders starting with `.` are excluded.
+
+1. Copy `src/plugins/base.js` to `src/plugins/{domain}.js` (or `src/plugins/site-plugins/plugins/{domain}.js`)
 2. Implement the required methods:
    - `getNextChapterUrl(page)` - Extract next chapter URL from current page
    - `getPreviousChapterUrl(page)` - Extract previous chapter URL from current page

@@ -3,5 +3,6 @@ data/
 content/
 *.log
 .DS_Store
+scraper-plugins/
 
 

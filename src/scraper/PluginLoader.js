@@ -35,19 +35,42 @@ import fs from 'fs-extra';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PLUGINS_DIR = path.join(__dirname, '../plugins');
+const PLUGINS_ROOT = path.join(__dirname, '../plugins');
+
+/**
+ * Recursively find all .js plugin files under PLUGINS_ROOT.
+ * Skips directories whose name begins with '.' (hidden folders).
+ * @returns {Array<{domain: string, path: string}>} Array of { domain, path }
+ */
+function findPluginPaths(root) {
+  const results = [];
+  if (!fs.existsSync(root)) return results;
+
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const fullPath = path.join(root, entry.name);
+
+    if (entry.isFile() && entry.name.endsWith('.js')) {
+      results.push({ domain: entry.name.replace('.js', ''), path: fullPath });
+    } else if (entry.isDirectory()) {
+      results.push(...findPluginPaths(fullPath));
+    }
+  }
+  return results;
+}
 
 export class PluginLoader {
   constructor() {
-    // Ensure plugins directory exists
-    fs.ensureDirSync(PLUGINS_DIR);
+    fs.ensureDirSync(PLUGINS_ROOT);
   }
 
   async loadPlugin(domain) {
-    const pluginPath = path.join(PLUGINS_DIR, `${domain}.js`);
-    
-    if (!(await fs.pathExists(pluginPath))) {
-      throw new Error(`Plugin for domain ${domain} not found at ${pluginPath}`);
+    const pluginMap = new Map(findPluginPaths(PLUGINS_ROOT).map(p => [p.domain, p.path]));
+    const pluginPath = pluginMap.get(domain);
+
+    if (!pluginPath) {
+      throw new Error(`Plugin for domain ${domain} not found`);
     }
 
     try {
@@ -84,13 +107,8 @@ export class PluginLoader {
   }
 
   listAvailablePlugins() {
-    if (!fs.existsSync(PLUGINS_DIR)) {
-      return [];
-    }
-    
-    return fs.readdirSync(PLUGINS_DIR)
-      .filter(file => file.endsWith('.js'))
-      .map(file => file.replace('.js', ''));
+    const plugins = findPluginPaths(PLUGINS_ROOT);
+    return [...new Set(plugins.map(p => p.domain))];
   }
 }
 

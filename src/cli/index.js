@@ -231,16 +231,28 @@ program
         return;
       }
 
-      console.log('\nRoot Sites:');
-      console.log('─'.repeat(80));
-      sites.forEach(site => {
-        console.log(`Domain: ${site.domain}`);
-        console.log(`Description: ${site.description}`);
-        if (site.credentials) {
-          console.log(`Credentials: ${site.credentials.username ? 'Yes' : 'No'}`);
-        }
-        console.log('─'.repeat(80));
-      });
+      const pluginLoader = new PluginLoader();
+      const availablePlugins = new Set(pluginLoader.listAvailablePlugins());
+
+      const sitesWithPlugin = sites.filter(site => availablePlugins.has(site.domain));
+      const sitesWithoutPlugin = sites.filter(site => !availablePlugins.has(site.domain));
+
+      const INDENT = '  ';
+      const defaultDesc = (site) => site.description === `Site: ${site.domain}`;
+      const printSite = (site) => {
+        const line = defaultDesc(site) ? site.domain : `${site.domain}: ${site.description}`;
+        console.log(`${INDENT}${line}`);
+      };
+
+      if (sitesWithPlugin.length > 0) {
+        console.log('\nSites with plugins (have a scraper implementation):');
+        sitesWithPlugin.forEach(printSite);
+      }
+
+      if (sitesWithoutPlugin.length > 0) {
+        console.log('\nSites without plugins (no scraper implementation found):');
+        sitesWithoutPlugin.forEach(printSite);
+      }
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);

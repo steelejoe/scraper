@@ -12,8 +12,9 @@ Some thoughts about where to go next. Some of these are definites, others are po
 - [x] Add support for taking in a list of book URLs and creating books
 - [x] Make the `root-path` parameter optional based on the book URL
 - [x] Simplify Tor support to just using a proxy
-- [ ] Pull the actual plugins out of this project and make available via drop-in
+- [x] Pull the actual plugins out of this project and make available via drop-in
   - How should I pull in from another repo? Maybe via links? or git sub-repos?
+- [x] Add sites report that includes which sites do not have plugins
 - [u] Add an option for pushing content to a remote storage site
 - [ ] Test on site that requires a button click to proceed
 - [ ] Add a `scrape-all` command to try and scrape all books
