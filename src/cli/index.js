@@ -44,19 +44,11 @@ const dataManager = new DataManager();
 
 // Helper function to determine proxy string from options
 function getProxyFromOptions(options) {
-  if (!options.tor) {
-    return null;
+  if (options.tor && !options.proxy) {
+    return 'socks5://127.0.0.1:9050'; // return default Tor proxy
   }
   
-  if (options.torProxy) {
-    // If proxy is provided, ensure it has socks5:// prefix if missing
-    return options.torProxy.startsWith('socks5://') 
-      ? options.torProxy 
-      : `socks5://${options.torProxy}`;
-  }
-  
-  // Default Tor proxy
-  return 'socks5://127.0.0.1:9050';
+  return options.proxy;
 }
 
 program
@@ -72,7 +64,7 @@ program
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
   .option('--debug', 'Enable debug logging output')
   .option('--tor', 'Use Tor proxy for scraping (defaults to socks5://127.0.0.1:9050)')
-  .option('--tor-proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
+  .option('--proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
   .action(async (bookId, options) => {
     try {
       const engine = new ScraperEngine();
@@ -93,7 +85,7 @@ program
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
   .option('--debug', 'Enable debug logging output')
   .option('--tor', 'Use Tor proxy for scraping (defaults to socks5://127.0.0.1:9050)')
-  .option('--tor-proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
+  .option('--proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
   .action(async (bookId, chapterNumber, options) => {
     try {
       let initialChapterNum = null;
@@ -295,7 +287,7 @@ program
   .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
   .option('--debug', 'Enable debug logging output')
   .option('--tor', 'Use Tor proxy for scraping (defaults to socks5://127.0.0.1:9050)')
-  .option('--tor-proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
+  .option('--proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
   .action(async (bookId, options) => {
     try {
       const book = await dataManager.getBook(bookId);
