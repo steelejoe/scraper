@@ -263,9 +263,14 @@ program
 program
   .command('list-books')
   .description('List all books')
-  .action(async () => {
+  .option('--scraped', 'Only show books with at least 1 chapter scraped')
+  .action(async (_args, command) => {
     try {
-      const books = await dataManager.loadBooks();
+      const options = command.opts();
+      let books = await dataManager.loadBooks();
+      if (options.scraped) {
+        books = books.filter(book => book.chapters.length >= 1);
+      }
       if (books.length === 0) {
         console.log('No books found.');
         return;
