@@ -15,6 +15,7 @@ Some thoughts about where to go next. Some of these are definites, others are po
 - [x] Pull the actual plugins out of this project and make available via drop-in
   - How should I pull in from another repo? Maybe via links? or git sub-repos?
 - [x] Add sites report that includes which sites do not have plugins
+- [x] Add option for exporting to epub and mobi
 - [u] Add an option for pushing content to a remote storage site
 - [ ] Test on site that requires a button click to proceed
 - [ ] Add a `scrape-all` command to try and scrape all books

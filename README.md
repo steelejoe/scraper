@@ -12,6 +12,7 @@ A plugin-based Node.js application for scraping chapter-based content from websi
 - **Multiple Content Types**: Supports both text and image-based content
 - **Authentication**: Optional login support for sites requiring credentials
 - **Table of Contents**: Automatic TOC generation with volume grouping
+- **Export to EPUB/MOBI**: Convert a scraped book to EPUB or MOBI for e-readers (e.g. Kindle) via pandoc; nav links are stripped
 - **URL Ingestion**: Bulk import books from a list of URLs
 - **Cloudflare Support**: Built-in support for Cloudflare-protected sites
 - **Error Tracking**: Accumulates and reports errors during scraping sessions
@@ -118,6 +119,35 @@ Generate or update the TOC.md file for a book:
 ```bash
 npm start generate-toc my-book-id
 ```
+
+### Export to EPUB or MOBI
+
+Export a scraped book to EPUB or MOBI for e-readers (e.g. Kindle). Chapter navigation links (Previous/Next) are stripped from the output so the ebook has no dead links. Requires [pandoc](https://pandoc.org/) to be installed and on your PATH.
+
+```bash
+npm start export-epub my-book-id
+```
+
+Options:
+- `-o, --output <path>`: Output file path (default: `content/<book-id>/<book-id>.epub` or `.mobi`)
+- `--author <author>`: Author name for metadata
+- `-f, --format <format>`: Output format: `epub` (default) or `mobi`
+- `--no-toc`: Omit the table of contents
+
+Examples:
+
+```bash
+# Export to default path (content/they-regretted/they-regretted.epub)
+npm start export-epub they-regretted
+
+# Export as MOBI for older Kindles
+npm start export-epub they-regretted --format mobi
+
+# Custom output path and author
+npm start export-epub they-regretted -o ./my-book.epub --author "Author Name"
+```
+
+For MOBI output, some systems may require [Calibre](https://calibre-ebook.com/) (e.g. for `ebook-convert`) if pandoc’s built-in MOBI support is limited. EPUB works on many newer Kindles; use MOBI for older devices.
 
 ### Ingest URLs from File
 
