@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * BSD 3-Clause License
  *
@@ -31,36 +29,34 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { Command } from 'commander';
-import { DataManager } from '../data/DataManager.js';
-import { registerScrapeCommand } from './scrapeCommand.js';
-import { registerScrapeReverseCommand } from './scrapeReverseCommand.js';
-import { registerAddSiteCommand } from './addSiteCommand.js';
-import { registerAddBookCommand } from './addBookCommand.js';
-import { registerListSitesCommand } from './listSitesCommand.js';
-import { registerListBooksCommand } from './listBooksCommand.js';
-import { registerResumeCommand } from './resumeCommand.js';
-import { registerGenerateTocCommand } from './generateTocCommand.js';
-import { registerExportCommand } from './exportCommand.js';
-import { registerIngestUrlsCommand } from './ingestUrlsCommand.js';
+import { RootSite } from '../models/RootSite.js';
 
-const program = new Command();
-const dataManager = new DataManager();
+/**
+ * Registers the add-site command with the given program.
+ * @param {import('commander').Command} program - The Commander program instance
+ * @param {import('../data/DataManager.js').DataManager} dataManager - The data manager instance
+ */
+export function registerAddSiteCommand(program, dataManager) {
+  program
+    .command('add-site')
+    .description('Add a new root site')
+    .argument('<domain>', 'The root domain (e.g., example.com)')
+    .argument('<description>', 'Description of the site')
+    .option('-u, --username <username>', 'Username for authentication')
+    .option('-p, --password <password>', 'Password for authentication')
+    .action(async (domain, description, options) => {
+      try {
+        const credentials = (options.username || options.password) ? {
+          username: options.username || '',
+          password: options.password || ''
+        } : null;
 
-program
-  .name('scraper')
-  .description('Plugin-based web scraper for chapter-based content')
-  .version('1.0.0');
-
-registerScrapeCommand(program);
-registerScrapeReverseCommand(program);
-registerAddSiteCommand(program, dataManager);
-registerAddBookCommand(program, dataManager);
-registerListSitesCommand(program, dataManager);
-registerListBooksCommand(program, dataManager);
-registerResumeCommand(program, dataManager);
-registerGenerateTocCommand(program);
-registerExportCommand(program, dataManager);
-registerIngestUrlsCommand(program, dataManager);
-
-program.parse();
+        const site = new RootSite(domain, description, credentials);
+        await dataManager.addRootSite(site);
+        console.log(`✓ Added root site: ${domain}`);
+      } catch (error) {
+        console.error('Error:', error.message);
+        process.exit(1);
+      }
+    });
+}

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * BSD 3-Clause License
  *
@@ -31,36 +29,30 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { Command } from 'commander';
-import { DataManager } from '../data/DataManager.js';
-import { registerScrapeCommand } from './scrapeCommand.js';
-import { registerScrapeReverseCommand } from './scrapeReverseCommand.js';
-import { registerAddSiteCommand } from './addSiteCommand.js';
-import { registerAddBookCommand } from './addBookCommand.js';
-import { registerListSitesCommand } from './listSitesCommand.js';
-import { registerListBooksCommand } from './listBooksCommand.js';
-import { registerResumeCommand } from './resumeCommand.js';
-import { registerGenerateTocCommand } from './generateTocCommand.js';
-import { registerExportCommand } from './exportCommand.js';
-import { registerIngestUrlsCommand } from './ingestUrlsCommand.js';
+import { ScraperEngine } from '../scraper/ScraperEngine.js';
+import { getProxyFromOptions } from './proxyUtils.js';
 
-const program = new Command();
-const dataManager = new DataManager();
-
-program
-  .name('scraper')
-  .description('Plugin-based web scraper for chapter-based content')
-  .version('1.0.0');
-
-registerScrapeCommand(program);
-registerScrapeReverseCommand(program);
-registerAddSiteCommand(program, dataManager);
-registerAddBookCommand(program, dataManager);
-registerListSitesCommand(program, dataManager);
-registerListBooksCommand(program, dataManager);
-registerResumeCommand(program, dataManager);
-registerGenerateTocCommand(program);
-registerExportCommand(program, dataManager);
-registerIngestUrlsCommand(program, dataManager);
-
-program.parse();
+/**
+ * Registers the scrape command with the given program.
+ * @param {import('commander').Command} program - The Commander program instance
+ */
+export function registerScrapeCommand(program) {
+  program
+    .command('scrape')
+    .description('Scrape a specific book (forward)')
+    .argument('<book-id>', 'The ID of the book to scrape')
+    .option('--force-save', 'Force save chapters even if they already exist (useful for fixing bad scrapes or updated content)')
+    .option('--debug', 'Enable debug logging output')
+    .option('--tor', 'Use Tor proxy for scraping (defaults to socks5://127.0.0.1:9050)')
+    .option('--proxy <proxy>', 'Specify proxy address (e.g., socks5://127.0.0.1:9050 or 127.0.0.1:9050)')
+    .action(async (bookId, options) => {
+      try {
+        const engine = new ScraperEngine();
+        const proxy = getProxyFromOptions(options);
+        await engine.scrapeBook(bookId, options.forceSave || false, options.debug || false, proxy);
+      } catch (error) {
+        console.error('Error:', error.message);
+        process.exit(1);
+      }
+    });
+}

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * BSD 3-Clause License
  *
@@ -31,36 +29,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { Command } from 'commander';
-import { DataManager } from '../data/DataManager.js';
-import { registerScrapeCommand } from './scrapeCommand.js';
-import { registerScrapeReverseCommand } from './scrapeReverseCommand.js';
-import { registerAddSiteCommand } from './addSiteCommand.js';
-import { registerAddBookCommand } from './addBookCommand.js';
-import { registerListSitesCommand } from './listSitesCommand.js';
-import { registerListBooksCommand } from './listBooksCommand.js';
-import { registerResumeCommand } from './resumeCommand.js';
-import { registerGenerateTocCommand } from './generateTocCommand.js';
-import { registerExportCommand } from './exportCommand.js';
-import { registerIngestUrlsCommand } from './ingestUrlsCommand.js';
-
-const program = new Command();
-const dataManager = new DataManager();
-
-program
-  .name('scraper')
-  .description('Plugin-based web scraper for chapter-based content')
-  .version('1.0.0');
-
-registerScrapeCommand(program);
-registerScrapeReverseCommand(program);
-registerAddSiteCommand(program, dataManager);
-registerAddBookCommand(program, dataManager);
-registerListSitesCommand(program, dataManager);
-registerListBooksCommand(program, dataManager);
-registerResumeCommand(program, dataManager);
-registerGenerateTocCommand(program);
-registerExportCommand(program, dataManager);
-registerIngestUrlsCommand(program, dataManager);
-
-program.parse();
+/**
+ * Returns proxy string from command options (Tor default or custom proxy).
+ * @param {{ tor?: boolean; proxy?: string }} options - Command options
+ * @returns {string | undefined}
+ */
+export function getProxyFromOptions(options) {
+  if (options.tor && !options.proxy) {
+    return 'socks5://127.0.0.1:9050';
+  }
+  return options.proxy;
+}

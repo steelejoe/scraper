@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * BSD 3-Clause License
  *
@@ -31,36 +29,45 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { Command } from 'commander';
-import { DataManager } from '../data/DataManager.js';
-import { registerScrapeCommand } from './scrapeCommand.js';
-import { registerScrapeReverseCommand } from './scrapeReverseCommand.js';
-import { registerAddSiteCommand } from './addSiteCommand.js';
-import { registerAddBookCommand } from './addBookCommand.js';
-import { registerListSitesCommand } from './listSitesCommand.js';
-import { registerListBooksCommand } from './listBooksCommand.js';
-import { registerResumeCommand } from './resumeCommand.js';
-import { registerGenerateTocCommand } from './generateTocCommand.js';
-import { registerExportCommand } from './exportCommand.js';
-import { registerIngestUrlsCommand } from './ingestUrlsCommand.js';
+/**
+ * Registers the list-books command with the given program.
+ * @param {import('commander').Command} program - The Commander program instance
+ * @param {import('../data/DataManager.js').DataManager} dataManager - The data manager instance
+ */
+export function registerListBooksCommand(program, dataManager) {
+  program
+    .command('list-books')
+    .description('List all books')
+    .option('--scraped', 'Only show books with at least 1 chapter scraped')
+    .action(async (_args, command) => {
+      try {
+        const options = command.opts();
+        let books = await dataManager.loadBooks();
+        if (options.scraped) {
+          books = books.filter(book => book.chapters.length >= 1);
+        }
+        if (books.length === 0) {
+          console.log('No books found.');
+          return;
+        }
 
-const program = new Command();
-const dataManager = new DataManager();
-
-program
-  .name('scraper')
-  .description('Plugin-based web scraper for chapter-based content')
-  .version('1.0.0');
-
-registerScrapeCommand(program);
-registerScrapeReverseCommand(program);
-registerAddSiteCommand(program, dataManager);
-registerAddBookCommand(program, dataManager);
-registerListSitesCommand(program, dataManager);
-registerListBooksCommand(program, dataManager);
-registerResumeCommand(program, dataManager);
-registerGenerateTocCommand(program);
-registerExportCommand(program, dataManager);
-registerIngestUrlsCommand(program, dataManager);
-
-program.parse();
+        console.log('\nBooks:');
+        console.log('─'.repeat(80));
+        books.forEach(book => {
+          console.log(`ID: ${book.id}`);
+          if (book.title) {
+            console.log(`Title: ${book.title}`);
+          }
+          console.log(`Root Site: ${book.rootSite}`);
+          console.log(`Root Path: ${book.rootPath}`);
+          console.log(`Plugin: ${book.plugin}`);
+          console.log(`Last Scraped: ${book.lastPathScraped || 'Never'}`);
+          console.log(`Chapters Scraped: ${book.chapters.length}`);
+          console.log('─'.repeat(80));
+        });
+      } catch (error) {
+        console.error('Error:', error.message);
+        process.exit(1);
+      }
+    });
+}
