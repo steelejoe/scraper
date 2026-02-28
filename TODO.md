@@ -6,7 +6,6 @@ Some thoughts about where to go next. Some of these are definites, others are po
 - [x] Capture all errors when scraping and report when stopping
 - [x] Fix handling of multiple parts
 - [x] Implement "end of chapters" detection - this looks pretty good?
-- [!] Add support for Cloudflare protected sites
 - [x] Add text vs image tags to book records and site records
 - [x] Add image site support
 - [x] Add support for taking in a list of book URLs and creating books
@@ -16,6 +15,7 @@ Some thoughts about where to go next. Some of these are definites, others are po
   - How should I pull in from another repo? Maybe via links? or git sub-repos?
 - [x] Add sites report that includes which sites do not have plugins
 - [x] Add option for exporting to epub and mobi
+- [x] Add support for Cloudflare protected sites using extensio
 - [u] Add an option for pushing content to a remote storage site
 - [ ] Test on site that requires a button click to proceed
 - [ ] Add a `scrape-all` command to try and scrape all books

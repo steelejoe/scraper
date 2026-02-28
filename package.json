@@ -20,8 +20,10 @@
   "dependencies": {
     "commander": "^11.1.0",
     "fs-extra": "^11.2.0",
+    "node-html-parser": "^7.0.2",
     "puppeteer": "^21.6.1",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "ws": "^8.19.0"
   }
 }

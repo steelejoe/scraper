@@ -36,6 +36,7 @@ import fs from 'fs-extra';
 import { fileURLToPath } from 'url';
 import { DataManager } from '../data/DataManager.js';
 import { PluginLoader } from './PluginLoader.js';
+import { ExtensionHelper } from './ExtensionHelper.js';
 
 // Use stealth plugin to help bypass Cloudflare and other bot detection
 puppeteer.use(StealthPlugin());
@@ -70,12 +71,13 @@ export class ScraperEngine {
     // Load appropriate plugin
     const plugin = await this.pluginLoader.loadPlugin(book.plugin);
 
-    // Check if plugin indicates Cloudflare protection is used
-    // Use non-headless mode for Cloudflare sites (harder for Cloudflare to detect)
+    // Check if plugin indicates Cloudflare protection - use scraper-helper extension
     const usesCloudflare = plugin.isCloudflarePage ? plugin.isCloudflarePage() : false;
-    const headlessMode = usesCloudflare ? false : 'new';
+    if (usesCloudflare && typeof plugin.extractFromHtml === 'function') {
+      return this.scrapeBookWithExtension(bookId, book, rootSite, plugin, forceSave, debug);
+    }
 
-    // Launch Puppeteer browser
+    // Launch Puppeteer browser for non-Cloudflare sites
     const launchArgs = [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
@@ -89,7 +91,7 @@ export class ScraperEngine {
     }
 
     const browser = await puppeteer.launch({
-      headless: headlessMode,
+      headless: 'new',
       args: launchArgs
     });
 
@@ -314,6 +316,126 @@ export class ScraperEngine {
 
     } finally {
       await browser.close();
+    }
+  }
+
+  /**
+   * Scrape a book using the scraper-helper extension (for Cloudflare-protected sites).
+   * Requires Chrome with scraper-helper extension loaded and connected to ws://127.0.0.1:8765.
+   * Plugin must implement extractFromHtml(html, url).
+   */
+  async scrapeBookWithExtension(bookId, book, rootSite, plugin, forceSave = false, debug = false) {
+    const extension = new ExtensionHelper();
+    try {
+      await extension.start();
+
+      let currentUrl = null;
+      if (book.lastPathScraped) {
+        currentUrl = this.buildUrl(rootSite.domain, book.lastPathScraped);
+        console.log(`Resuming from: ${currentUrl}`);
+      } else if (book.startingPath) {
+        currentUrl = this.buildUrl(rootSite.domain, book.startingPath);
+        console.log(`Starting from: ${currentUrl}`);
+      } else {
+        throw new Error(`Cannot start scraping: both lastPathScraped and startingPath are undefined for book ${bookId}.`);
+      }
+
+      let chapterCount = 0;
+      while (currentUrl) {
+        try {
+          console.log(`\nScraping: ${currentUrl}`);
+
+          const html = await extension.loadUrl(currentUrl);
+          const data = plugin.extractFromHtml(html, currentUrl);
+
+          if (!data.hasContent) {
+            console.log('No content detected on page');
+            if (data.nextUrl) {
+              const urlValidation = this.validateUrlContainsRootPath(data.nextUrl, book.rootPath);
+              if (!urlValidation.valid) {
+                console.error(`Error: ${urlValidation.reason}`);
+                this.errors.push({ url: data.nextUrl, type: 'url_validation_error', message: urlValidation.reason });
+                break;
+              }
+              book.lastPathScraped = this.extractPathFromUrl(currentUrl);
+              await this.dataManager.updateBook(bookId, { lastPathScraped: book.lastPathScraped });
+              currentUrl = data.nextUrl;
+              continue;
+            }
+            console.log('Stopping scrape - no content and no valid next chapter');
+            break;
+          }
+
+          const chapterData = {
+            title: data.title,
+            content: data.content,
+            chapterNumber: data.chapterNumber,
+            images: data.images
+          };
+
+          if (!book.title && chapterData.bookTitle) {
+            book.title = chapterData.bookTitle;
+            await this.dataManager.updateBook(bookId, { title: book.title });
+          }
+
+          const chapterPath = this.extractPathFromUrl(currentUrl);
+          const alreadyScraped = book.hasChapter(chapterPath);
+
+          let chapterNumber = chapterData.chapterNumber;
+          if (chapterNumber === undefined || chapterNumber === null) {
+            const chapterMatch = currentUrl.match(/chapter[_-]?(\d+\.?\d*)/i);
+            chapterNumber = chapterMatch ? parseFloat(chapterMatch[1]) : book.chapters.length + 1;
+          }
+
+          if (!alreadyScraped) {
+            book.addChapter(chapterPath, chapterNumber);
+          }
+
+          const sortedChapters = book.getChaptersSorted();
+          const currentIndex = sortedChapters.findIndex(ch => book.getChapterPath(ch) === chapterPath);
+          const prevChapterPath = currentIndex > 0 ? book.getChapterPath(sortedChapters[currentIndex - 1]) : null;
+          const nextChapterPath = currentIndex >= 0 && currentIndex < sortedChapters.length - 1 ? book.getChapterPath(sortedChapters[currentIndex + 1]) : null;
+
+          if (!alreadyScraped || forceSave) {
+            await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath, currentUrl);
+            if (prevChapterPath) await this.updateChapterNavigation(bookId, prevChapterPath, chapterPath);
+            if (nextChapterPath) await this.updateChapterNavigation(bookId, nextChapterPath, chapterPath, true);
+            chapterCount++;
+            console.log(`✓ Saved chapter: ${chapterData.title}`);
+            await this.generateTOC(bookId);
+          } else {
+            console.log(`⊘ Chapter already scraped, skipping: ${chapterData.title}`);
+            await this.generateTOC(bookId);
+          }
+
+          book.lastPathScraped = chapterPath;
+          await this.dataManager.updateBook(bookId, { chapters: book.chapters, lastPathScraped: book.lastPathScraped });
+
+          const nextUrl = data.nextUrl;
+          if (!nextUrl) {
+            console.log('No next chapter found, scraping complete');
+            break;
+          }
+
+          const urlValidation = this.validateUrlContainsRootPath(nextUrl, book.rootPath);
+          if (!urlValidation.valid) {
+            console.error(`Error: ${urlValidation.reason}`);
+            this.errors.push({ url: nextUrl, type: 'url_validation_error', message: urlValidation.reason });
+            break;
+          }
+          currentUrl = nextUrl;
+        } catch (error) {
+          const errorMsg = `Error scraping ${currentUrl}: ${error.message}`;
+          console.error(errorMsg);
+          this.errors.push({ url: currentUrl, type: 'scraping_error', message: errorMsg });
+          throw error;
+        }
+      }
+
+      console.log(`\nScraping complete. Scraped ${chapterCount} chapter(s).`);
+      this.reportErrors();
+    } finally {
+      await extension.stop();
     }
   }
 
