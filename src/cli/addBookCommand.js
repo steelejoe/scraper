@@ -46,6 +46,7 @@ export function registerAddBookCommand(program, dataManager) {
     .argument('<starting-url>', 'Full URL of the starting chapter (e.g., https://www.example.com/book-name/chapter-1)')
     .option('-r, --root-path <root-path>', 'Optional: Base path for the book (e.g., /book-name/). If not provided, will be extracted from the starting-url')
     .option('-t, --title <title>', 'Optional: Book title')
+    .option('-c, --content-type <type>', "Optional: 'text' or 'image' (overrides plugin default when site has both)")
     .action(async (id, startingUrl, options) => {
       try {
         // Parse starting URL to extract domain and path
@@ -90,14 +91,19 @@ export function registerAddBookCommand(program, dataManager) {
         // Plugin is the same as the domain (1:1 relationship)
         const plugin = rootSite;
 
-        // Load plugin to determine contentType
+        // Load plugin to determine contentType (book override takes precedence)
         const pluginLoader = new PluginLoader();
-        let contentType = null;
-        try {
-          const pluginModule = await pluginLoader.loadPlugin(plugin);
-          contentType = pluginModule.getContentType();
-        } catch (error) {
-          console.warn(`⚠ Warning: Could not load plugin for ${plugin}, contentType will be null: ${error.message}`);
+        let contentType = options.contentType ?? null;
+        if (contentType && contentType !== 'text' && contentType !== 'image') {
+          throw new Error(`Invalid contentType: ${contentType}. Must be 'text' or 'image'.`);
+        }
+        if (!contentType) {
+          try {
+            const pluginModule = await pluginLoader.loadPlugin(plugin);
+            contentType = pluginModule.getContentType();
+          } catch (error) {
+            console.warn(`⚠ Warning: Could not load plugin for ${plugin}, contentType will be null: ${error.message}`);
+          }
         }
 
         // Check if root site exists, create it if it doesn't

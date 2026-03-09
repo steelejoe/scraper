@@ -229,7 +229,8 @@ export class ScraperEngine {
             const nextChapterPath = nextChapter ? book.getChapterPath(nextChapter) : null;
             
             // Save current chapter with navigation
-            await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath, currentUrl);
+            const contentType = book.contentType ?? plugin.getContentType();
+            await this.saveChapter(bookId, chapterPath, chapterData, contentType, prevChapterPath, nextChapterPath, currentUrl);
             
             // Update previous chapter's "next" link if it exists
             if (prevChapterPath) {
@@ -345,7 +346,13 @@ export class ScraperEngine {
         try {
           console.log(`\nScraping: ${currentUrl}`);
 
-          const html = await extension.loadUrl(currentUrl);
+          const resolvedContentType = book.contentType ?? plugin.getContentType?.();
+          const inlineImages = resolvedContentType === 'image';
+          const html = await extension.loadUrl(currentUrl, {
+            inlineImages,
+            maxImagesToInline: 100,
+            maxBytesPerImage: 10 * 1024 * 1024
+          });
           const data = plugin.extractFromHtml(html, currentUrl);
 
           if (!data.hasContent) {
@@ -397,7 +404,7 @@ export class ScraperEngine {
           const nextChapterPath = currentIndex >= 0 && currentIndex < sortedChapters.length - 1 ? book.getChapterPath(sortedChapters[currentIndex + 1]) : null;
 
           if (!alreadyScraped || forceSave) {
-            await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath, currentUrl);
+            await this.saveChapter(bookId, chapterPath, chapterData, resolvedContentType, prevChapterPath, nextChapterPath, currentUrl);
             if (prevChapterPath) await this.updateChapterNavigation(bookId, prevChapterPath, chapterPath);
             if (nextChapterPath) await this.updateChapterNavigation(bookId, nextChapterPath, chapterPath, true);
             chapterCount++;
@@ -669,7 +676,8 @@ export class ScraperEngine {
             const nextChapterPath = nextChapter ? book.getChapterPath(nextChapter) : null;
             
             // Save current chapter with navigation
-            await this.saveChapter(bookId, chapterPath, chapterData, plugin.getContentType(), prevChapterPath, nextChapterPath, currentUrl);
+            const contentType = book.contentType ?? plugin.getContentType();
+            await this.saveChapter(bookId, chapterPath, chapterData, contentType, prevChapterPath, nextChapterPath, currentUrl);
             
             // Update previous chapter's "next" link if it exists
             if (prevChapterPath) {
@@ -876,30 +884,33 @@ export class ScraperEngine {
       for (let i = 0; i < chapterData.images.length; i++) {
         const imageUrl = chapterData.images[i];
         try {
-          // Determine file extension from URL or default to .jpg
-          const urlPath = new URL(imageUrl).pathname;
-          const extMatch = urlPath.match(/\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i);
-          const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
-          
-          // Generate filename: image_001.jpg, image_002.jpg, etc.
+          let buffer;
+          let ext = 'jpg';
+
+          if (imageUrl.startsWith('data:')) {
+            // Data URI (from extension inlineImages - bypasses Cloudflare)
+            const match = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+            if (!match) throw new Error('Invalid data URI format');
+            ext = match[1].toLowerCase().replace('jpeg', 'jpg');
+            buffer = Buffer.from(match[2], 'base64');
+          } else {
+            // Remote URL - download
+            const urlPath = new URL(imageUrl).pathname;
+            const extMatch = urlPath.match(/\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i);
+            ext = extMatch ? extMatch[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
+            console.log(`  Downloading image ${i + 1}/${chapterData.images.length}...`);
+            const response = await fetch(imageUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+          }
+
           const imageFilename = `image_${String(i + 1).padStart(3, '0')}.${ext}`;
           const imagePath = path.join(chapterImageDir, imageFilename);
-          
-          // Download image
-          console.log(`  Downloading image ${i + 1}/${chapterData.images.length}...`);
-          const response = await fetch(imageUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-          });
-          
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-          
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          
           await fs.writeFile(imagePath, buffer);
           
           // Store relative path from markdown file to image

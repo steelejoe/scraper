@@ -83,11 +83,22 @@ export class ExtensionHelper {
   /**
    * Load a URL in the extension's active tab and return the page HTML.
    * @param {string} url
+   * @param {Object} [options] - Optional load options
+   * @param {boolean} [options.inlineImages] - If true, images are fetched in page context and inlined as data URIs (for Cloudflare-protected image sites). Includes scrolling to trigger lazy loading.
+   * @param {number} [options.maxImagesToInline] - Max images to inline when inlineImages is true (default 50)
+   * @param {number} [options.maxBytesPerImage] - Max bytes per image when inlining (default 5MB)
    * @returns {Promise<string>} Full HTML of the loaded page
    */
-  async loadUrl(url) {
+  async loadUrl(url, options = {}) {
     if (!this.client || this.client.readyState !== 1) {
       throw new Error('ExtensionHelper: no connected client. Call start() and ensure extension is connected.');
+    }
+
+    const params = { url };
+    if (options.inlineImages) {
+      params.inlineImages = true;
+      if (options.maxImagesToInline != null) params.maxImagesToInline = options.maxImagesToInline;
+      if (options.maxBytesPerImage != null) params.maxBytesPerImage = options.maxBytesPerImage;
     }
 
     return new Promise((resolve, reject) => {
@@ -103,6 +114,9 @@ export class ExtensionHelper {
             clearTimeout(timeout);
             this.client.removeListener('message', handler);
             if (msg.success && msg.content != null) {
+              if (msg.imageErrors && msg.imageErrors.length > 0) {
+                console.warn(`[ExtensionHelper] ${msg.imageErrors.length} image(s) failed to inline:`, msg.imageErrors.slice(0, 3).join(', '));
+              }
               resolve(msg.content);
             } else {
               reject(new Error(msg.error ?? 'load failed'));
@@ -114,7 +128,7 @@ export class ExtensionHelper {
       };
 
       this.client.on('message', handler);
-      this.client.send(JSON.stringify({ command: 'load', params: { url } }));
+      this.client.send(JSON.stringify({ command: 'load', params }));
     });
   }
 
